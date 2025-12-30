@@ -2,21 +2,25 @@
 // SWTOR MACRO AGENT - Main Entry Point
 // ============================================================================
 
-import { GestureDetector } from './gestureDetector.js';
-import { SequenceExecutor, ExecutionEvent } from './sequenceExecutor.js';
-import { InputListener, KeyEvent, MouseEvent } from './inputListener.js';
-import { ProfileLoader, DEFAULT_GESTURE_SETTINGS } from './profileLoader.js';
-import { MacroProfile, GestureEvent, MacroBinding } from './types.js';
-import { ExecutorFactory, IExecutor, ExecutorBackend } from './executorFactory.js';
+import { GestureDetector } from "./gestureDetector.js";
+import { SequenceExecutor, ExecutionEvent } from "./sequenceExecutor.js";
+import { InputListener, KeyEvent, MouseEvent } from "./inputListener.js";
+import { ProfileLoader, DEFAULT_GESTURE_SETTINGS } from "./profileLoader.js";
+import { MacroProfile, GestureEvent, MacroBinding } from "./types.js";
+import {
+  ExecutorFactory,
+  IExecutor,
+  ExecutorBackend,
+} from "./executorFactory.js";
 
 // Event callback for logging
 function createEventCallback(): (event: ExecutionEvent) => void {
   return (event) => {
-    if (event.type === 'started') {
+    if (event.type === "started") {
       console.log(`⚡ Started: ${event.bindingName}`);
-    } else if (event.type === 'completed') {
+    } else if (event.type === "completed") {
       console.log(`✅ Completed: ${event.bindingName}`);
-    } else if (event.type === 'error') {
+    } else if (event.type === "error") {
       console.error(`❌ Error: ${event.bindingName} - ${event.error}`);
     }
   };
@@ -28,10 +32,10 @@ class MacroAgent {
   private executor: IExecutor | null = null;
   private inputListener: InputListener;
   private profileLoader: ProfileLoader;
-  private currentBackend: ExecutorBackend = 'robotjs';
+  private currentBackend: ExecutorBackend = "robotjs";
 
   constructor() {
-    this.profileLoader = new ProfileLoader('./profiles');
+    this.profileLoader = new ProfileLoader("./profiles");
 
     // Create input listener
     this.inputListener = new InputListener((event) => {
@@ -64,16 +68,16 @@ class MacroAgent {
   private handleInputEvent(event: KeyEvent | MouseEvent): void {
     if (!this.gestureDetector) return;
 
-    if ('key' in event) {
+    if ("key" in event) {
       // Keyboard event
-      if (event.type === 'down') {
+      if (event.type === "down") {
         this.gestureDetector.handleKeyDown(event.key);
       } else {
         this.gestureDetector.handleKeyUp(event.key);
       }
     } else {
       // Mouse event
-      if (event.type === 'down') {
+      if (event.type === "down") {
         this.gestureDetector.handleMouseDown(event.button);
       } else {
         this.gestureDetector.handleMouseUp(event.button);
@@ -92,9 +96,10 @@ class MacroAgent {
 
     // Find matching macro binding
     const binding = this.profile.macros.find(
-      m => m.trigger.key === event.inputKey &&
-           m.trigger.gesture === event.gesture &&
-           m.enabled
+      (m) =>
+        m.trigger.key === event.inputKey &&
+        m.trigger.gesture === event.gesture &&
+        m.enabled
     );
 
     if (binding) {
@@ -112,7 +117,7 @@ class MacroAgent {
    */
   loadProfile(filename: string): boolean {
     const profile = this.profileLoader.loadProfile(filename);
-    
+
     if (!profile) {
       return false;
     }
@@ -125,6 +130,19 @@ class MacroAgent {
       (event) => this.handleGesture(event)
     );
 
+    // If executor supports compiled profile injection, provide compiled profile
+    const compiled = this.profileLoader.getCompiledProfile();
+    if (compiled && this.executor && "setCompiledProfile" in this.executor) {
+      try {
+        (this.executor as any).setCompiledProfile(compiled);
+        console.log(
+          `🔧 Compiled profile applied to executor (${compiled.conundrumKeys.size} conundrum keys)`
+        );
+      } catch (err) {
+        console.warn("⚠️  Failed to apply compiled profile to executor:", err);
+      }
+    }
+
     return true;
   }
 
@@ -132,9 +150,9 @@ class MacroAgent {
    * Start the macro agent
    */
   async start(backend?: ExecutorBackend): Promise<void> {
-    console.log('\n╔════════════════════════════════════════════════════╗');
-    console.log('║       SWTOR MACRO AGENT - Per-Key Gestures         ║');
-    console.log('╚════════════════════════════════════════════════════╝\n');
+    console.log("\n╔════════════════════════════════════════════════════╗");
+    console.log("║       SWTOR MACRO AGENT - Per-Key Gestures         ║");
+    console.log("╚════════════════════════════════════════════════════╝\n");
 
     // Initialize executor
     await this.initializeExecutor(backend);
@@ -142,22 +160,22 @@ class MacroAgent {
 
     // List available profiles
     const profiles = this.profileLoader.listProfiles();
-    
+
     if (profiles.length === 0) {
-      console.log('⚠️  No profiles found in ./profiles/');
-      console.log('   Creating example profile...\n');
-      
+      console.log("⚠️  No profiles found in ./profiles/");
+      console.log("   Creating example profile...\n");
+
       // Profile will be created from the example.json we already have
-      if (!this.loadProfile('example.json')) {
-        console.error('❌ Failed to load profile');
+      if (!this.loadProfile("example.json")) {
+        console.error("❌ Failed to load profile");
         return;
       }
     } else {
-      console.log(`📂 Available profiles: ${profiles.join(', ')}`);
-      
+      console.log(`📂 Available profiles: ${profiles.join(", ")}`);
+
       // Load first profile
       if (!this.loadProfile(profiles[0])) {
-        console.error('❌ Failed to load profile');
+        console.error("❌ Failed to load profile");
         return;
       }
     }
@@ -167,25 +185,27 @@ class MacroAgent {
       console.log(`\n📋 Loaded macros:`);
       for (const macro of this.profile.macros) {
         if (macro.enabled) {
-          console.log(`   • ${macro.trigger.key} (${macro.trigger.gesture}) → "${macro.name}"`);
+          console.log(
+            `   • ${macro.trigger.key} (${macro.trigger.gesture}) → "${macro.name}"`
+          );
         }
       }
     }
 
     // Show constraints and capabilities
-    console.log('\n📏 Sequence Constraints:');
-    console.log('   • Min delay: 25ms');
-    console.log('   • Variance: ≥4ms (max - min)');
-    console.log('   • Max unique keys: 4 per sequence');
-    console.log('   • Max repeats: 6 per key');
-    console.log('   • Max press count: 4 (excess = quadruple, no long)');
-    
-    console.log('\n🔀 Concurrency:');
-    console.log('   • Simultaneous keys: YES (all fingers work at once)');
-    console.log('   • Concurrent sequences: YES (different macros overlap)');
+    console.log("\n📏 Sequence Constraints:");
+    console.log("   • Min delay: 25ms");
+    console.log("   • Variance: ≥4ms (max - min)");
+    console.log("   • Max unique keys: 4 per sequence");
+    console.log("   • Max repeats: 6 per key");
+    console.log("   • Max press count: 4 (excess = quadruple, no long)");
+
+    console.log("\n🔀 Concurrency:");
+    console.log("   • Simultaneous keys: YES (all fingers work at once)");
+    console.log("   • Concurrent sequences: YES (different macros overlap)");
 
     // Start listening
-    console.log('\n─────────────────────────────────────────────────────');
+    console.log("\n─────────────────────────────────────────────────────");
     this.inputListener.start();
   }
 
@@ -194,13 +214,13 @@ class MacroAgent {
    */
   stop(): void {
     this.inputListener.stop();
-    if (this.executor && 'cancelAll' in this.executor) {
+    if (this.executor && "cancelAll" in this.executor) {
       (this.executor as any).cancelAll?.();
     }
-    if (this.executor && 'destroy' in this.executor) {
+    if (this.executor && "destroy" in this.executor) {
       (this.executor as any).destroy?.();
     }
-    console.log('🛑 Macro Agent stopped');
+    console.log("🛑 Macro Agent stopped");
   }
 
   /**
@@ -214,11 +234,11 @@ class MacroAgent {
    * Show available backends
    */
   static async showBackends(): Promise<void> {
-    console.log('\n📊 Available executor backends:\n');
+    console.log("\n📊 Available executor backends:\n");
     const backends = await ExecutorFactory.getAvailableBackends();
-    
+
     for (const { backend, available, notes } of backends) {
-      const status = available ? '✅' : '❌';
+      const status = available ? "✅" : "❌";
       console.log(`  ${status} ${backend.toUpperCase()}`);
       console.log(`     ${notes}\n`);
     }
@@ -232,9 +252,9 @@ class MacroAgent {
 async function main() {
   // Parse command line arguments
   const args = process.argv.slice(2);
-  
+
   // Show help
-  if (args.includes('--help') || args.includes('-h')) {
+  if (args.includes("--help") || args.includes("-h")) {
     console.log(`
 SWTOR Macro Agent - Per-Key Gesture Detection
 
@@ -261,16 +281,16 @@ ENVIRONMENT:
   }
 
   // Show available backends
-  if (args.includes('--backends')) {
+  if (args.includes("--backends")) {
     await MacroAgent.showBackends();
     process.exit(0);
   }
 
   // Parse backend option
   let backend: ExecutorBackend | undefined;
-  const backendArg = args.find(a => a.startsWith('--backend='));
+  const backendArg = args.find((a) => a.startsWith("--backend="));
   if (backendArg) {
-    backend = backendArg.split('=')[1] as ExecutorBackend;
+    backend = backendArg.split("=")[1] as ExecutorBackend;
   } else if (process.env.MACRO_BACKEND) {
     backend = process.env.MACRO_BACKEND as ExecutorBackend;
   }
@@ -278,12 +298,12 @@ ENVIRONMENT:
   const agent = new MacroAgent();
 
   // Handle graceful shutdown
-  process.on('SIGINT', () => {
+  process.on("SIGINT", () => {
     agent.stop();
     process.exit(0);
   });
 
-  process.on('SIGTERM', () => {
+  process.on("SIGTERM", () => {
     agent.stop();
     process.exit(0);
   });

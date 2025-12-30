@@ -1,4 +1,4 @@
-import assert from "assert";
+import { test } from "vitest";
 import { GestureDetector } from "../src/gestureDetector.js";
 import { DEFAULT_GESTURE_SETTINGS } from "../src/profileLoader.js";
 
@@ -21,19 +21,17 @@ async function runTest() {
   ) => {
     return new Promise<void>((resolve, reject) => {
       const events: any[] = [];
-      const start = Date.now();
 
       const collector = (ev: any) => {
         events.push(ev);
         if (ev.gesture === expected) {
-          detector.callback = originalCallback; // restore
+          (detector as any).offGesture?.(collector);
           resolve();
         }
       };
 
-      // temporarily replace callback to capture
-      const originalCallback = (detector as any).callback;
-      (detector as any).callback = collector;
+      // temporarily subscribe to emissions
+      (detector as any).onGesture?.(collector);
 
       // schedule actions relative to now
       let t = 0;
@@ -48,7 +46,7 @@ async function runTest() {
 
       // timeout
       setTimeout(() => {
-        (detector as any).callback = originalCallback;
+        (detector as any).offGesture?.(collector);
         reject(
           new Error(
             `Timeout waiting for gesture ${expected}. Got: ${events
@@ -216,7 +214,6 @@ async function runTest() {
   console.log("All gesture mapping tests passed.");
 }
 
-runTest().catch((err) => {
-  console.error("Test failed:", err);
-  process.exit(1);
-});
+test("gesture mapping matches expected gestures", async () => {
+  await runTest();
+}, 20000);

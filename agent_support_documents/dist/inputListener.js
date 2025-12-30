@@ -1,7 +1,7 @@
 // ============================================================================
 // INPUT LISTENER - Global keyboard/mouse capture
 // ============================================================================
-// 
+//
 // This module provides both a test listener (stdin) and a production global
 // listener using node-global-key-listener.
 //
@@ -12,12 +12,12 @@
 // available and fall back to stdin mode if not.
 //
 // ============================================================================
-import { INPUT_KEYS } from './types.js';
+import { INPUT_KEYS } from "./types.js";
 // Key name mapping from node-global-key-listener to our InputKey format
 const KEY_NAME_MAP = {
-    'SPACE': 'SPACE',
-    'RETURN': 'ENTER',
-    'ESCAPE': 'ESCAPE',
+    SPACE: "SPACE",
+    RETURN: "ENTER",
+    ESCAPE: "ESCAPE",
     // Letters are already uppercase
 };
 // ============================================================================
@@ -33,45 +33,45 @@ export class StdinInputListener {
         if (this.isListening)
             return;
         this.isListening = true;
-        console.log('\n🎧 Input Listener started (stdin mode - for testing)');
-        console.log('   Press keys to test gesture detection');
-        console.log('   Press Ctrl+C to exit\n');
+        console.log("\n🎧 Input Listener started (stdin mode - for testing)");
+        console.log("   Press keys to test gesture detection");
+        console.log("   Press Ctrl+C to exit\n");
         if (process.stdin.isTTY) {
             process.stdin.setRawMode(true);
             process.stdin.resume();
-            process.stdin.setEncoding('utf8');
-            process.stdin.on('data', (data) => {
+            process.stdin.setEncoding("utf8");
+            process.stdin.on("data", (data) => {
                 const key = data.toString();
-                if (key === '\u0003') {
-                    console.log('\n👋 Exiting...');
+                if (key === "\u0003") {
+                    console.log("\n👋 Exiting...");
                     process.exit();
                 }
                 const upperKey = key.toUpperCase();
                 this.callback({
                     key: upperKey,
-                    type: 'down',
+                    type: "down",
                     timestamp: Date.now(),
                 });
                 setTimeout(() => {
                     this.callback({
                         key: upperKey,
-                        type: 'up',
+                        type: "up",
                         timestamp: Date.now(),
                     });
                 }, 50);
             });
         }
         else {
-            console.log('⚠️  stdin not in TTY mode, using line-based input');
+            console.log("⚠️  stdin not in TTY mode, using line-based input");
             process.stdin.resume();
-            process.stdin.setEncoding('utf8');
-            process.stdin.on('data', (data) => {
+            process.stdin.setEncoding("utf8");
+            process.stdin.on("data", (data) => {
                 const key = data.toString().trim().toUpperCase();
                 if (!key)
                     return;
-                this.callback({ key, type: 'down', timestamp: Date.now() });
+                this.callback({ key, type: "down", timestamp: Date.now() });
                 setTimeout(() => {
-                    this.callback({ key, type: 'up', timestamp: Date.now() });
+                    this.callback({ key, type: "up", timestamp: Date.now() });
                 }, 50);
             });
         }
@@ -81,7 +81,7 @@ export class StdinInputListener {
         if (process.stdin.isTTY) {
             process.stdin.setRawMode(false);
         }
-        console.log('🛑 Input Listener stopped');
+        console.log("🛑 Input Listener stopped");
     }
     isActive() {
         return this.isListening;
@@ -102,7 +102,7 @@ export class GlobalInputListener {
             return;
         try {
             // Dynamic import of node-global-key-listener
-            const { GlobalKeyboardListener } = await import('node-global-key-listener');
+            const { GlobalKeyboardListener } = await import("node-global-key-listener");
             this.listener = new GlobalKeyboardListener();
             this.listener.addListener((e, down) => {
                 // Map the key name
@@ -115,7 +115,7 @@ export class GlobalInputListener {
                         return; // Ignore keys we don't track
                     }
                 }
-                const eventType = e.state === 'DOWN' ? 'down' : 'up';
+                const eventType = e.state === "DOWN" ? "down" : "up";
                 this.callback({
                     key: keyName.toUpperCase(),
                     type: eventType,
@@ -123,19 +123,19 @@ export class GlobalInputListener {
                 });
             });
             this.isListening = true;
-            console.log('\n🎧 Global Input Listener started (node-global-key-listener)');
-            console.log('   Listening for global keyboard events...');
-            console.log('   Recognized keys:', INPUT_KEYS.slice(0, 18).join(', '));
-            console.log('   Press Ctrl+C to exit\n');
+            console.log("\n🎧 Global Input Listener started (node-global-key-listener)");
+            console.log("   Listening for global keyboard events...");
+            console.log("   Recognized keys:", INPUT_KEYS.slice(0, 18).join(", "));
+            console.log("   Press Ctrl+C to exit\n");
         }
         catch (error) {
-            console.error('❌ Failed to start global listener:', error.message);
-            console.log('');
-            console.log('📦 To enable global key capture, install node-global-key-listener:');
-            console.log('   npm install node-global-key-listener');
-            console.log('');
-            console.log('⚠️  Falling back to stdin mode (only works when terminal is focused)');
-            console.log('');
+            console.error("❌ Failed to start global listener:", error.message);
+            console.log("");
+            console.log("📦 To enable global key capture, install node-global-key-listener:");
+            console.log("   npm install node-global-key-listener");
+            console.log("");
+            console.log("⚠️  Falling back to stdin mode (only works when terminal is focused)");
+            console.log("");
             // Fall back to stdin listener
             const fallback = new StdinInputListener(this.callback);
             fallback.start();
@@ -148,26 +148,26 @@ export class GlobalInputListener {
             this.listener = null;
         }
         this.isListening = false;
-        console.log('🛑 Global Input Listener stopped');
+        console.log("🛑 Global Input Listener stopped");
     }
     isActive() {
         return this.isListening;
     }
 }
-export async function createInputListener(callback, mode = 'auto') {
-    if (mode === 'stdin') {
+export async function createInputListener(callback, mode = "auto") {
+    if (mode === "stdin") {
         return new StdinInputListener(callback);
     }
-    if (mode === 'global' || mode === 'auto') {
+    if (mode === "global" || mode === "auto") {
         // Try to create global listener
         try {
-            await import('node-global-key-listener');
+            await import("node-global-key-listener");
             return new GlobalInputListener(callback);
         }
         catch {
-            if (mode === 'global') {
-                console.warn('⚠️  node-global-key-listener not available, install with:');
-                console.warn('   npm install node-global-key-listener');
+            if (mode === "global") {
+                console.warn("⚠️  node-global-key-listener not available, install with:");
+                console.warn("   npm install node-global-key-listener");
             }
             return new StdinInputListener(callback);
         }
@@ -185,12 +185,12 @@ export class InputListener {
     }
     async start() {
         if (!this.initialized) {
-            this.delegate = await createInputListener(this.callback, 'auto');
+            this.delegate = await createInputListener(this.callback, "auto");
             this.initialized = true;
         }
-        if ('start' in this.delegate) {
+        if ("start" in this.delegate) {
             const startFn = this.delegate.start.bind(this.delegate);
-            if (startFn.constructor.name === 'AsyncFunction') {
+            if (startFn.constructor.name === "AsyncFunction") {
                 await startFn();
             }
             else {

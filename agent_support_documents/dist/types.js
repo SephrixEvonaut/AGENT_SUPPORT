@@ -3,10 +3,73 @@
 // ============================================================================
 // 22 Input Keys for gesture detection
 export const INPUT_KEYS = [
-    "W", "A", "S", "D",
-    "B", "I", "T", "C", "H", "Y", "U", "P",
-    "1", "2", "3", "4", "5", "6",
-    "LEFT_CLICK", "RIGHT_CLICK", "MIDDLE_CLICK", "SCROLL_UP"
+    "W",
+    "A",
+    "S",
+    "D",
+    "B",
+    "I",
+    "T",
+    "C",
+    "H",
+    "Y",
+    "U",
+    "P",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "LEFT_CLICK",
+    "RIGHT_CLICK",
+    "MIDDLE_CLICK",
+    "SCROLL_UP",
+];
+// 37 Output keys available for emission (letters, punctuation, function, numpad, special)
+export const OUTPUT_KEYS = [
+    // Letters (11 keys)
+    "J",
+    "K",
+    "L",
+    "M",
+    "N",
+    "O",
+    "Q",
+    "R",
+    "V",
+    "X",
+    "Z",
+    // Punctuation (6 keys)
+    ",",
+    ".",
+    "'",
+    ";",
+    "]",
+    "[",
+    // Function Keys (4 keys)
+    "F6",
+    "F7",
+    "F8",
+    "F9",
+    // Numpad (14 keys)
+    "NUMPAD0",
+    "NUMPAD1",
+    "NUMPAD2",
+    "NUMPAD3",
+    "NUMPAD4",
+    "NUMPAD5",
+    "NUMPAD6",
+    "NUMPAD7",
+    "NUMPAD8",
+    "NUMPAD9",
+    "NUMPAD_ADD",
+    "NUMPAD_MULTIPLY",
+    "NUMPAD_DECIMAL",
+    "NUMPAD_SUBTRACT",
+    // Special Keys (2 keys)
+    "BACKSPACE",
+    "END",
 ];
 // 12 Gesture Types (expanded: single/double/triple/quadruple with long + super_long variants)
 export const GESTURE_TYPES = [

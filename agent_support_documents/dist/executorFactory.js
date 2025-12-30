@@ -3,6 +3,7 @@
 // ============================================================================
 import { SequenceExecutor } from './sequenceExecutor.js';
 import { InterceptionExecutor, MockInterceptionExecutor } from './interceptionExecutor.js';
+import { logger } from './logger.js';
 /**
  * Default configuration
  */
@@ -81,24 +82,24 @@ export class ExecutorFactory {
         const fullConfig = { ...DEFAULT_CONFIG, ...config };
         switch (fullConfig.backend) {
             case 'robotjs':
-                console.log('[ExecutorFactory] Creating RobotJS executor (SendInput API)');
-                console.log('[ExecutorFactory] Detection level: MEDIUM (software injection flag set)');
+                logger.debug('Creating RobotJS executor (SendInput API)');
+                logger.debug('Detection level: MEDIUM (software injection flag set)');
                 return new SequenceExecutor(fullConfig.onEvent);
             case 'interception':
-                console.log('[ExecutorFactory] Creating Interception executor (kernel-level)');
-                console.log('[ExecutorFactory] Detection level: HARD (appears as hardware input)');
+                logger.debug('Creating Interception executor (kernel-level)');
+                logger.debug('Detection level: HARD (appears as hardware input)');
                 const interception = new InterceptionExecutor(fullConfig.interceptionDllPath);
                 const initialized = await interception.initialize();
                 if (!initialized) {
-                    console.warn('[ExecutorFactory] Interception init failed, falling back to mock');
+                    logger.warn('Interception init failed, falling back to mock');
                     const mock = new MockInterceptionExecutor();
                     await mock.initialize();
                     return new InterceptionExecutorWrapper(mock, fullConfig.onEvent);
                 }
                 return new InterceptionExecutorWrapper(interception, fullConfig.onEvent);
             case 'mock':
-                console.log('[ExecutorFactory] Creating Mock executor (no keypresses)');
-                console.log('[ExecutorFactory] Use this for testing profile logic');
+                logger.debug('Creating Mock executor (no keypresses)');
+                logger.debug('Use this for testing profile logic');
                 const mock = new MockInterceptionExecutor();
                 await mock.initialize();
                 return new InterceptionExecutorWrapper(mock, fullConfig.onEvent);
@@ -115,7 +116,7 @@ export class ExecutorFactory {
         if (process.platform === 'win32') {
             const available = await InterceptionExecutor.isAvailable();
             if (available) {
-                console.log('[ExecutorFactory] Interception driver detected');
+                logger.debug('Interception driver detected');
                 const executor = await this.create({ backend: 'interception', onEvent });
                 return { executor, backend: 'interception' };
             }

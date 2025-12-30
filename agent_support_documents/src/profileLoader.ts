@@ -13,7 +13,9 @@ import {
   GESTURE_TYPES,
   InputKey,
   GestureType,
+  CompiledProfile,
 } from "./types.js";
+import { compileProfile } from "./profileCompiler.js";
 
 // Default gesture settings
 export const DEFAULT_GESTURE_SETTINGS: GestureSettings = {
@@ -36,6 +38,7 @@ interface ValidationResult {
 
 export class ProfileLoader {
   private profileDir: string;
+  private lastCompiled: CompiledProfile | null = null;
 
   constructor(profileDir: string = "./profiles") {
     this.profileDir = profileDir;
@@ -204,6 +207,16 @@ export class ProfileLoader {
       console.log(
         `✅ Loaded profile: "${profile.name}" (${profile.macros.length} macros)`
       );
+      // Compile profile once for fast runtime checks
+      try {
+        const compiled = compileProfile(profile);
+        this.lastCompiled = compiled;
+        console.log(
+          `🔎 Profile compiled: ${compiled.conundrumKeys.size} conundrum keys`
+        );
+      } catch (err) {
+        console.warn(`⚠️  Profile compilation failed: ${err}`);
+      }
       return profile;
     } catch (error) {
       if (error instanceof SyntaxError) {
@@ -215,6 +228,13 @@ export class ProfileLoader {
       }
       return null;
     }
+  }
+
+  /**
+   * Get the last compiled profile (if any)
+   */
+  getCompiledProfile(): CompiledProfile | null {
+    return this.lastCompiled;
   }
 
   /**

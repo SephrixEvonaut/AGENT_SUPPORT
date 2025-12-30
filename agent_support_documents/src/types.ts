@@ -30,6 +30,58 @@ export const INPUT_KEYS = [
 
 export type InputKey = (typeof INPUT_KEYS)[number];
 
+// 37 Output keys available for emission (letters, punctuation, function, numpad, special)
+export const OUTPUT_KEYS = [
+  // Letters (11 keys)
+  "J",
+  "K",
+  "L",
+  "M",
+  "N",
+  "O",
+  "Q",
+  "R",
+  "V",
+  "X",
+  "Z",
+
+  // Punctuation (6 keys)
+  ",",
+  ".",
+  "'",
+  ";",
+  "]",
+  "[",
+
+  // Function Keys (4 keys)
+  "F6",
+  "F7",
+  "F8",
+  "F9",
+
+  // Numpad (14 keys)
+  "NUMPAD0",
+  "NUMPAD1",
+  "NUMPAD2",
+  "NUMPAD3",
+  "NUMPAD4",
+  "NUMPAD5",
+  "NUMPAD6",
+  "NUMPAD7",
+  "NUMPAD8",
+  "NUMPAD9",
+  "NUMPAD_ADD",
+  "NUMPAD_MULTIPLY",
+  "NUMPAD_DECIMAL",
+  "NUMPAD_SUBTRACT",
+
+  // Special Keys (2 keys)
+  "BACKSPACE",
+  "END",
+] as const;
+
+export type OutputKey = (typeof OUTPUT_KEYS)[number];
+
 // 12 Gesture Types (expanded: single/double/triple/quadruple with long + super_long variants)
 export const GESTURE_TYPES = [
   "single",
@@ -58,6 +110,17 @@ export interface SequenceStep {
   minDelay: number; // Minimum ms before next press (>= 25ms)
   maxDelay: number; // Maximum ms before next press (variance >= 4ms)
   echoHits?: number; // Number of times to repeat this key (1-6, default 1)
+  /**
+   * How long to hold the key down (inclusive range in ms).
+   * Defaults to [15, 27] if omitted.
+   */
+  keyDownDuration?: [number, number];
+
+  /**
+   * Buffer tier after this key press: determines inter-key randomized delay.
+   * If omitted, falls back to using minDelay/maxDelay behavior.
+   */
+  bufferTier?: "low" | "medium" | "high";
 }
 
 // A macro binding: gesture triggers a sequence
@@ -88,6 +151,16 @@ export interface MacroProfile {
   description: string;
   gestureSettings: GestureSettings;
   macros: MacroBinding[];
+}
+
+/**
+ * Compiled profile for fast runtime lookup
+ * - conundrumKeys: raw keys that also appear with modifiers
+ * - safeKeys: raw keys that do not appear with modifiers
+ */
+export interface CompiledProfile {
+  conundrumKeys: Set<string>;
+  safeKeys: Set<string>;
 }
 
 // Gesture detection event

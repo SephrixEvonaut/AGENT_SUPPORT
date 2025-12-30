@@ -1,4 +1,4 @@
-import { MacroProfile, GestureSettings } from './types.js';
+import { MacroProfile, GestureSettings, CompiledProfile } from "./types.js";
 export declare const DEFAULT_GESTURE_SETTINGS: GestureSettings;
 interface ValidationResult {
     valid: boolean;
@@ -7,6 +7,7 @@ interface ValidationResult {
 }
 export declare class ProfileLoader {
     private profileDir;
+    private lastCompiled;
     constructor(profileDir?: string);
     /**
      * Validate a macro binding
@@ -20,6 +21,10 @@ export declare class ProfileLoader {
      * Load a profile from JSON file
      */
     loadProfile(filename: string): MacroProfile | null;
+    /**
+     * Get the last compiled profile (if any)
+     */
+    getCompiledProfile(): CompiledProfile | null;
     /**
      * List all available profiles
      */

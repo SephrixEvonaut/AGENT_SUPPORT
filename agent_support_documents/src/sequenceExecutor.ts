@@ -10,11 +10,19 @@
 //
 // ============================================================================
 
-import robot from 'robotjs';
-import { SequenceStep, MacroBinding, SEQUENCE_CONSTRAINTS } from './types.js';
+import robot from "robotjs";
+import {
+  SequenceStep,
+  MacroBinding,
+  SEQUENCE_CONSTRAINTS,
+  CompiledProfile,
+} from "./types.js";
+import { isConundrumKey } from "./profileCompiler.js";
+import { TrafficController } from "./trafficController.js";
+import { logger } from "./logger.js";
 
 export interface ExecutionEvent {
-  type: 'started' | 'step' | 'completed' | 'error' | 'cancelled';
+  type: "started" | "step" | "completed" | "error" | "cancelled";
   bindingName: string;
   step?: SequenceStep;
   stepIndex?: number;
@@ -29,34 +37,62 @@ export class SequenceExecutor {
   // Per-binding execution state - allows DIFFERENT bindings to run concurrently
   // but prevents the SAME binding from overlapping with itself
   private isExecuting: Map<string, boolean> = new Map();
-  
+
   // Track all active executions for monitoring
   private activeExecutions: Set<string> = new Set();
-  
-  private callback: ExecutionCallback;
 
-  constructor(callback?: ExecutionCallback) {
+  private callback: ExecutionCallback;
+  private compiledProfile: CompiledProfile | null = null;
+  private trafficController: TrafficController | null = null;
+
+  constructor(callback?: ExecutionCallback, compiledProfile?: CompiledProfile) {
     this.callback = callback || (() => {});
-    
+    if (compiledProfile) this.setCompiledProfile(compiledProfile);
+
     // Configure robotjs for minimal internal delay
     robot.setKeyboardDelay(1);
-    
-    console.log('🎮 SequenceExecutor initialized');
-    console.log('   Concurrent sequences: ENABLED (different bindings run in parallel)');
-    console.log('   Per-binding overlap: PREVENTED (same binding won\'t stack)');
+
+    logger.debug("SequenceExecutor initialized");
+    logger.debug(
+      "Concurrent sequences: ENABLED (different bindings run in parallel)"
+    );
+    logger.debug("Per-binding overlap: PREVENTED (same binding won't stack)");
+  }
+
+  /**
+   * Provide a compiled profile to enable traffic control.
+   */
+  setCompiledProfile(compiled: CompiledProfile): void {
+    this.compiledProfile = compiled;
+    this.trafficController = new TrafficController(compiled);
   }
 
   /**
    * Validate a sequence step meets timing constraints
    */
   private validateStep(step: SequenceStep, stepIndex: number): string | null {
-    if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
-      return `Step ${stepIndex} ("${step.key}"): minDelay must be >= ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms (got ${step.minDelay}ms)`;
+    // If bufferTier is provided, we use tiered buffer delays and skip legacy min/max validation
+    if (step.bufferTier) {
+      if (!["low", "medium", "high"].includes(step.bufferTier)) {
+        return `Step ${stepIndex} ("${step.key}"): bufferTier must be one of low|medium|high`;
+      }
+    } else {
+      if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
+        return `Step ${stepIndex} ("${step.key}"): minDelay must be >= ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms (got ${step.minDelay}ms)`;
+      }
+
+      const variance = step.maxDelay - step.minDelay;
+      if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
+        return `Step ${stepIndex} ("${step.key}"): variance (max - min) must be >= ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms (got ${variance}ms)`;
+      }
     }
 
-    const variance = step.maxDelay - step.minDelay;
-    if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
-      return `Step ${stepIndex} ("${step.key}"): variance (max - min) must be >= ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms (got ${variance}ms)`;
+    // Validate keyDownDuration if provided
+    if (step.keyDownDuration) {
+      const [kmin, kmax] = step.keyDownDuration;
+      if (kmin <= 0 || kmax < kmin) {
+        return `Step ${stepIndex} ("${step.key}"): keyDownDuration must be [min,max] with min>0 and max>=min`;
+      }
     }
 
     return null;
@@ -70,7 +106,7 @@ export class SequenceExecutor {
       const step = sequence[i];
       const error = this.validateStep(step, i);
       if (error) return error;
-      
+
       const echoHits = step.echoHits || 1;
       if (echoHits < 1 || echoHits > SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS) {
         return `Step ${i} ("${step.key}"): echoHits must be 1-${SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS} (got ${echoHits})`;
@@ -105,27 +141,57 @@ export class SequenceExecutor {
   }
 
   /**
+   * Parse a step key which may include modifiers like "SHIFT+Q" or "ALT+NUMPAD7"
+   */
+  private parseKey(key: string): { key: string; modifiers: string[] } {
+    const parts = key.split("+").map((p) => p.trim());
+    const modifiers: string[] = [];
+    let base = parts[parts.length - 1];
+
+    // Collect modifiers (all parts except last)
+    for (let i = 0; i < parts.length - 1; i++) {
+      const m = parts[i].toUpperCase();
+      if (m === "SHIFT") modifiers.push("shift");
+      else if (m === "ALT") modifiers.push("alt");
+      else if (m === "CTRL" || m === "CONTROL") modifiers.push("control");
+      else modifiers.push(m.toLowerCase());
+    }
+
+    // Normalize base key
+    base = base.toUpperCase();
+    // Map common patterns (NUMPADx -> numpadx, F6 -> f6)
+    if (base.startsWith("NUMPAD")) {
+      base = base.replace("NUMPAD", "numpad").toLowerCase();
+    } else {
+      base = base.toLowerCase();
+    }
+
+    return { key: base, modifiers };
+  }
+
+  /**
+   * Buffer tier ranges (inclusive)
+   */
+  private bufferRanges: Record<string, [number, number]> = {
+    low: [11, 17],
+    medium: [15, 24],
+    high: [980, 1270],
+  };
+
+  /**
    * Sleep for specified milliseconds
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
    * Send a single keypress
    */
   private pressKey(key: string): void {
-    const keyMap: Record<string, string> = {
-      'f1': 'f1', 'f2': 'f2', 'f3': 'f3', 'f4': 'f4',
-      'f5': 'f5', 'f6': 'f6', 'f7': 'f7', 'f8': 'f8',
-      'f9': 'f9', 'f10': 'f10', 'f11': 'f11', 'f12': 'f12',
-      'space': 'space', 'enter': 'enter', 'tab': 'tab',
-      'escape': 'escape', 'backspace': 'backspace',
-      'up': 'up', 'down': 'down', 'left': 'left', 'right': 'right',
-    };
-
-    const mappedKey = keyMap[key.toLowerCase()] || key.toLowerCase();
-    robot.keyTap(mappedKey);
+    // Keep for backward compatibility but prefer explicit key+modifier flow
+    const { key: parsedKey, modifiers } = this.parseKey(key);
+    robot.keyTap(parsedKey, modifiers.length === 0 ? undefined : modifiers);
   }
 
   /**
@@ -156,7 +222,7 @@ export class SequenceExecutor {
     if (this.isExecuting.get(bindingName)) {
       this.isExecuting.set(bindingName, false);
       this.callback({
-        type: 'cancelled',
+        type: "cancelled",
         bindingName,
         timestamp: Date.now(),
       });
@@ -180,13 +246,13 @@ export class SequenceExecutor {
   executeDetached(binding: MacroBinding): void {
     // Check if this specific binding is already executing
     if (this.isExecuting.get(binding.name)) {
-      console.log(`⚠️  "${binding.name}" already executing, skipping...`);
+      logger.warn(`"${binding.name}" already executing, skipping...`);
       return;
     }
 
     // Launch as detached promise (don't await - allows concurrency)
     this.executeInternal(binding).catch((error) => {
-      console.error(`❌ Detached execution error for "${binding.name}":`, error);
+      logger.error(`Detached execution error for "${binding.name}":`, error);
     });
   }
 
@@ -206,7 +272,7 @@ export class SequenceExecutor {
 
     // Check if already executing (per-binding lock)
     if (this.isExecuting.get(name)) {
-      console.log(`⚠️  "${name}" already executing, skipping...`);
+      logger.warn(`"${name}" already executing, skipping...`);
       return false;
     }
 
@@ -214,12 +280,12 @@ export class SequenceExecutor {
     const validationError = this.validateSequence(sequence);
     if (validationError) {
       this.callback({
-        type: 'error',
+        type: "error",
         bindingName: name,
         error: validationError,
         timestamp: Date.now(),
       });
-      console.error(`❌ Validation failed: ${validationError}`);
+      logger.error(`Validation failed: ${validationError}`);
       return false;
     }
 
@@ -228,19 +294,21 @@ export class SequenceExecutor {
     this.activeExecutions.add(name);
 
     this.callback({
-      type: 'started',
+      type: "started",
       bindingName: name,
       timestamp: Date.now(),
     });
 
     const activeCount = this.activeExecutions.size;
-    console.log(`\n🎮 Executing: "${name}" (${sequence.length} steps) [${activeCount} active]`);
+    logger.debug(
+      `Executing: "${name}" (${sequence.length} steps) [${activeCount} active]`
+    );
 
     try {
       for (let i = 0; i < sequence.length; i++) {
         // Check if cancelled
         if (!this.isExecuting.get(name)) {
-          console.log(`⏹️  "${name}" cancelled`);
+          logger.info(`"${name}" cancelled`);
           return false;
         }
 
@@ -251,32 +319,90 @@ export class SequenceExecutor {
         for (let hit = 0; hit < echoHits; hit++) {
           // Check if cancelled between hits
           if (!this.isExecuting.get(name)) {
-            console.log(`⏹️  "${name}" cancelled`);
+            logger.info(`"${name}" cancelled`);
             return false;
           }
 
-          // Press the key
-          this.pressKey(step.key);
+          // Press the key (support modifiers and hold duration)
+          const { key: parsedKey, modifiers } = this.parseKey(step.key);
+
+          // Traffic control for conundrum keys: wait if necessary
+          if (this.compiledProfile && this.trafficController) {
+            const needsTraffic = isConundrumKey(step.key, this.compiledProfile);
+            if (needsTraffic) {
+              await this.trafficController.requestCrossing(step.key);
+            }
+          }
+
+          // Determine key down duration (default [15,27])
+          const kd = step.keyDownDuration || [15, 27];
+          const keyDownMs = this.getRandomDelay(kd[0], kd[1]);
+
+          // Key down
+          try {
+            robot.keyToggle(
+              parsedKey,
+              "down",
+              modifiers.length === 0 ? undefined : modifiers
+            );
+          } catch (err) {
+            // Fallback to keyTap if keyToggle unsupported for this key
+            this.pressKey(step.key);
+          }
 
           this.callback({
-            type: 'step',
+            type: "step",
             bindingName: name,
             step,
             stepIndex: i,
             timestamp: Date.now(),
           });
 
-          console.log(`  ✓ [${i + 1}/${sequence.length}] Pressed "${step.key}" (hit ${hit + 1}/${echoHits})`);
+          logger.debug(
+            `[${i + 1}/${sequence.length}] Pressed "${step.key}" (hit ${
+              hit + 1
+            }/${echoHits}) held ${keyDownMs}ms`
+          );
 
-          // Delay between hits and steps (except after last hit of last step)
+          // Hold duration
+          await this.sleep(keyDownMs);
+
+          // Key up
+          try {
+            robot.keyToggle(
+              parsedKey,
+              "up",
+              modifiers.length === 0 ? undefined : modifiers
+            );
+          } catch (err) {
+            // If keyToggle failed, nothing else to do
+          }
+
+          // Release traffic control if it was acquired
+          if (this.compiledProfile && this.trafficController) {
+            const needsTraffic = isConundrumKey(step.key, this.compiledProfile);
+            if (needsTraffic) {
+              this.trafficController.releaseCrossing(step.key);
+            }
+          }
+
+          // Determine buffer delay after this key press
           const isLastHit = hit === echoHits - 1;
           const isLastStep = i === sequence.length - 1;
 
           if (!isLastStep || !isLastHit) {
-            const delay = this.getRandomDelay(step.minDelay, step.maxDelay);
+            let delay: number;
+
+            if (step.bufferTier) {
+              const range = this.bufferRanges[step.bufferTier];
+              delay = this.getRandomDelay(range[0], range[1]);
+            } else {
+              // Fall back to legacy minDelay/maxDelay if bufferTier not provided
+              delay = this.getRandomDelay(step.minDelay, step.maxDelay);
+            }
 
             this.callback({
-              type: 'step',
+              type: "step",
               bindingName: name,
               step,
               stepIndex: i,
@@ -291,27 +417,25 @@ export class SequenceExecutor {
       }
 
       this.callback({
-        type: 'completed',
+        type: "completed",
         bindingName: name,
         timestamp: Date.now(),
       });
 
-      console.log(`✅ "${name}" complete\n`);
+      logger.info(`"${name}" complete`);
       return true;
-
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+
       this.callback({
-        type: 'error',
+        type: "error",
         bindingName: name,
         error: errorMsg,
         timestamp: Date.now(),
       });
 
-      console.error(`❌ "${name}" failed: ${errorMsg}`);
+      logger.error(`"${name}" failed: ${errorMsg}`);
       return false;
-
     } finally {
       this.isExecuting.set(name, false);
       this.activeExecutions.delete(name);
@@ -340,10 +464,12 @@ export class SequenceExecutor {
       totalPresses += echoHits;
     }
 
-    console.log(`   Unique keys: ${keyCount.size}/${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS}`);
-    console.log(`   Total key presses: ${totalPresses}`);
+    logger.info(
+      `Unique keys: ${keyCount.size}/${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS}`
+    );
+    logger.info(`Total key presses: ${totalPresses}`);
     for (const [key, count] of keyCount) {
-      console.log(`   - "${key}": ${count}x`);
+      logger.info(`- "${key}": ${count}x`);
     }
 
     let totalMinTime = 0;
@@ -352,12 +478,16 @@ export class SequenceExecutor {
     for (let i = 0; i < sequence.length; i++) {
       const step = sequence[i];
       const echoHits = step.echoHits || 1;
-      console.log(`   [${i + 1}] "${step.key}" x${echoHits} → wait ${step.minDelay}-${step.maxDelay}ms`);
-      
+      logger.info(
+        `[${i + 1}] "${step.key}" x${echoHits} → wait ${step.minDelay}-${
+          step.maxDelay
+        }ms`
+      );
+
       const pressesInStep = echoHits;
       const isLastStep = i === sequence.length - 1;
       const delayCount = isLastStep ? pressesInStep - 1 : pressesInStep;
-      
+
       totalMinTime += step.minDelay * delayCount;
       totalMaxTime += step.maxDelay * delayCount;
     }

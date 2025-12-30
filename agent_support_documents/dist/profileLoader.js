@@ -1,9 +1,10 @@
 // ============================================================================
 // PROFILE LOADER - Load and validate macro profiles from JSON
 // ============================================================================
-import fs from 'fs';
-import path from 'path';
-import { SEQUENCE_CONSTRAINTS, INPUT_KEYS, GESTURE_TYPES } from './types.js';
+import fs from "fs";
+import path from "path";
+import { SEQUENCE_CONSTRAINTS, INPUT_KEYS, GESTURE_TYPES, } from "./types.js";
+import { compileProfile } from "./profileCompiler.js";
 // Default gesture settings
 export const DEFAULT_GESTURE_SETTINGS = {
     multiPressWindow: 350,
@@ -17,7 +18,8 @@ export const DEFAULT_GESTURE_SETTINGS = {
 };
 export class ProfileLoader {
     profileDir;
-    constructor(profileDir = './profiles') {
+    lastCompiled = null;
+    constructor(profileDir = "./profiles") {
         this.profileDir = profileDir;
     }
     /**
@@ -56,7 +58,7 @@ export class ProfileLoader {
                 }
             }
             // Count unique keys
-            const uniqueKeys = new Set(binding.sequence.map(s => s.key));
+            const uniqueKeys = new Set(binding.sequence.map((s) => s.key));
             if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
                 errors.push(`Binding ${index} "${binding.name}": ` +
                     `${uniqueKeys.size} unique keys > ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS} maximum`);
@@ -86,13 +88,13 @@ export class ProfileLoader {
         const errors = [];
         const warnings = [];
         if (!profile.name) {
-            errors.push('Profile missing name');
+            errors.push("Profile missing name");
         }
         if (!profile.gestureSettings) {
-            warnings.push('Profile missing gestureSettings, using defaults');
+            warnings.push("Profile missing gestureSettings, using defaults");
         }
         if (!profile.macros || !Array.isArray(profile.macros)) {
-            errors.push('Profile missing macros array');
+            errors.push("Profile missing macros array");
         }
         else {
             // Validate each binding
@@ -123,7 +125,7 @@ export class ProfileLoader {
     loadProfile(filename) {
         const filepath = path.join(this.profileDir, filename);
         try {
-            const content = fs.readFileSync(filepath, 'utf-8');
+            const content = fs.readFileSync(filepath, "utf-8");
             const profile = JSON.parse(content);
             // Apply default settings if missing
             if (!profile.gestureSettings) {
@@ -133,21 +135,30 @@ export class ProfileLoader {
             const result = this.validateProfile(profile);
             if (result.warnings.length > 0) {
                 console.log(`⚠️  Warnings for "${filename}":`);
-                result.warnings.forEach(w => console.log(`   - ${w}`));
+                result.warnings.forEach((w) => console.log(`   - ${w}`));
             }
             if (!result.valid) {
                 console.error(`❌ Errors in "${filename}":`);
-                result.errors.forEach(e => console.error(`   - ${e}`));
+                result.errors.forEach((e) => console.error(`   - ${e}`));
                 return null;
             }
             console.log(`✅ Loaded profile: "${profile.name}" (${profile.macros.length} macros)`);
+            // Compile profile once for fast runtime checks
+            try {
+                const compiled = compileProfile(profile);
+                this.lastCompiled = compiled;
+                console.log(`🔎 Profile compiled: ${compiled.conundrumKeys.size} conundrum keys`);
+            }
+            catch (err) {
+                console.warn(`⚠️  Profile compilation failed: ${err}`);
+            }
             return profile;
         }
         catch (error) {
             if (error instanceof SyntaxError) {
                 console.error(`❌ Invalid JSON in "${filename}": ${error.message}`);
             }
-            else if (error.code === 'ENOENT') {
+            else if (error.code === "ENOENT") {
                 console.error(`❌ Profile file not found: "${filepath}"`);
             }
             else {
@@ -155,6 +166,12 @@ export class ProfileLoader {
             }
             return null;
         }
+    }
+    /**
+     * Get the last compiled profile (if any)
+     */
+    getCompiledProfile() {
+        return this.lastCompiled;
     }
     /**
      * List all available profiles
@@ -165,11 +182,10 @@ export class ProfileLoader {
                 fs.mkdirSync(this.profileDir, { recursive: true });
                 return [];
             }
-            return fs.readdirSync(this.profileDir)
-                .filter(f => f.endsWith('.json'));
+            return fs.readdirSync(this.profileDir).filter((f) => f.endsWith(".json"));
         }
         catch (error) {
-            console.error('❌ Error listing profiles:', error);
+            console.error("❌ Error listing profiles:", error);
             return [];
         }
     }
@@ -183,7 +199,7 @@ export class ProfileLoader {
             const result = this.validateProfile(profile);
             if (!result.valid) {
                 console.error(`❌ Cannot save invalid profile:`);
-                result.errors.forEach(e => console.error(`   - ${e}`));
+                result.errors.forEach((e) => console.error(`   - ${e}`));
                 return false;
             }
             // Ensure directory exists
@@ -191,7 +207,7 @@ export class ProfileLoader {
                 fs.mkdirSync(this.profileDir, { recursive: true });
             }
             // Write file
-            fs.writeFileSync(filepath, JSON.stringify(profile, null, 2), 'utf-8');
+            fs.writeFileSync(filepath, JSON.stringify(profile, null, 2), "utf-8");
             console.log(`💾 Saved profile to "${filepath}"`);
             return true;
         }

@@ -286,3 +286,12 @@ swtor-macro-agent/
 ## License
 
 MIT - Use at your own risk. The author is not responsible for any game bans or ToS violations.
+
+## Recent Changes (Dec 2025)
+
+- Added `OUTPUT_KEYS` and expanded gesture/sequence typing for improved macro expressiveness.
+- Implemented `profileCompiler` (precomputes `conundrumKeys`) and `trafficController` to avoid modifier collisions when running concurrent sequences.
+- `GestureDetector` now exposes a stable listener API: `onGesture(cb)` / `offGesture(cb)` — tests subscribe instead of replacing internal callback.
+- Improved test stability; increased test timeout for integration-style gesture mapping tests.
+
+Run the build and tests as shown above to verify the current state.

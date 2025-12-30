@@ -36,7 +36,7 @@ interface PressRecord {
 class KeyGestureStateMachine {
   private key: InputKey;
   private settings: GestureSettings;
-  private callback: GestureCallback;
+  private emitFn: (event: GestureEvent) => void;
 
   private pressHistory: PressRecord[] = [];
   private keyDownTime: number | null = null;
@@ -48,13 +48,12 @@ class KeyGestureStateMachine {
   constructor(
     key: InputKey,
     settings: GestureSettings,
-    callback: GestureCallback
+    emitFn: (event: GestureEvent) => void
   ) {
     this.key = key;
     this.settings = settings;
-    this.callback = callback;
+    this.emitFn = emitFn;
   }
-
   private clearTimers(): void {
     if (this.gestureTimer) {
       clearTimeout(this.gestureTimer);
@@ -67,12 +66,16 @@ class KeyGestureStateMachine {
     // Emit the gesture via callback (non-blocking)
     // Using queueMicrotask for cross-platform compatibility
     queueMicrotask(() => {
-      this.callback({
-        inputKey: this.key,
-        gesture,
-        timestamp: performance.now(),
-        holdDuration,
-      });
+      try {
+        this.emitFn({
+          inputKey: this.key,
+          gesture,
+          timestamp: performance.now(),
+          holdDuration,
+        });
+      } catch {
+        // swallow
+      }
     });
 
     // Reset state (reuse array to reduce allocations)
@@ -171,6 +174,8 @@ class KeyGestureStateMachine {
       pressType = "super_long";
     }
 
+    // removed debug logging
+
     // Check if this press is within multi-press window
     const lastPress = this.pressHistory[this.pressHistory.length - 1];
     const isWithinWindow =
@@ -221,8 +226,9 @@ class KeyGestureStateMachine {
 
 export class GestureDetector {
   private machines: Map<InputKey, KeyGestureStateMachine> = new Map();
-  private callback: GestureCallback;
+  private _callback: GestureCallback;
   private settings: GestureSettings;
+  private listeners: Set<GestureCallback> = new Set();
 
   // Event queue for burst resilience
   private eventQueue: Array<{
@@ -234,24 +240,50 @@ export class GestureDetector {
 
   constructor(settings: GestureSettings, callback: GestureCallback) {
     this.settings = settings;
-    this.callback = callback;
+    this._callback = callback;
 
     // Create independent state machine for each input key
     // Each machine is completely isolated - no shared state
     for (const key of INPUT_KEYS) {
       this.machines.set(
         key,
-        new KeyGestureStateMachine(key, settings, callback)
+        new KeyGestureStateMachine(key, settings, (ev) => {
+          try {
+            this._callback(ev);
+          } catch {}
+          for (const l of this.listeners) {
+            try {
+              l(ev);
+            } catch {}
+          }
+        })
       );
     }
 
-    console.log(`🎯 GestureDetector initialized for ${INPUT_KEYS.length} keys`);
-    console.log(
-      `   Max press count: ${MAX_PRESS_COUNT} (excess = quadruple, no long)`
-    );
-    console.log(
-      `   Simultaneous keys: SUPPORTED (all ${INPUT_KEYS.length} keys independent)`
-    );
+    // initialized
+  }
+
+  /** Replace the callback used by all per-key machines at runtime */
+  setCallback(cb: GestureCallback): void {
+    this._callback = cb;
+  }
+
+  /** Subscribe to gesture events without replacing the central callback */
+  onGesture(cb: GestureCallback): void {
+    this.listeners.add(cb);
+  }
+
+  /** Unsubscribe a previously registered gesture listener */
+  offGesture(cb: GestureCallback): void {
+    this.listeners.delete(cb);
+  }
+
+  get callback(): GestureCallback {
+    return this._callback;
+  }
+
+  set callback(cb: GestureCallback) {
+    this.setCallback(cb);
   }
 
   /**
@@ -339,7 +371,16 @@ export class GestureDetector {
     for (const key of INPUT_KEYS) {
       this.machines.set(
         key,
-        new KeyGestureStateMachine(key, settings, this.callback)
+        new KeyGestureStateMachine(key, settings, (ev) => {
+          try {
+            this._callback(ev);
+          } catch {}
+          for (const l of this.listeners) {
+            try {
+              l(ev);
+            } catch {}
+          }
+        })
       );
     }
   }

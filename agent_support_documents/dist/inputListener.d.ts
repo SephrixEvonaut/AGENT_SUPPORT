@@ -1,11 +1,11 @@
 export interface KeyEvent {
     key: string;
-    type: 'down' | 'up';
+    type: "down" | "up";
     timestamp: number;
 }
 export interface MouseEvent {
-    button: 'LEFT_CLICK' | 'RIGHT_CLICK' | 'MIDDLE_CLICK';
-    type: 'down' | 'up';
+    button: "LEFT_CLICK" | "RIGHT_CLICK" | "MIDDLE_CLICK";
+    type: "down" | "up";
     timestamp: number;
 }
 export type InputCallback = (event: KeyEvent | MouseEvent) => void;
@@ -31,7 +31,7 @@ export declare class GlobalInputListener implements IInputListener {
     stop(): void;
     isActive(): boolean;
 }
-export type ListenerMode = 'auto' | 'global' | 'stdin';
+export type ListenerMode = "auto" | "global" | "stdin";
 export declare function createInputListener(callback: InputCallback, mode?: ListenerMode): Promise<IInputListener>;
 export declare class InputListener implements IInputListener {
     private delegate;

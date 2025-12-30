@@ -19,6 +19,7 @@
  * 4. No software injection flags are set
  */
 import { SEQUENCE_CONSTRAINTS } from './types.js';
+import { logger } from './logger.js';
 const SCAN_CODES = {
     // Number row
     '1': { code: 0x02 }, '2': { code: 0x03 }, '3': { code: 0x04 }, '4': { code: 0x05 }, '5': { code: 0x06 },
@@ -110,20 +111,20 @@ export class InterceptionExecutor {
             for (let device = 1; device <= 10; device++) {
                 if (this.ffi.interception_is_keyboard(device)) {
                     this.keyboardDevice = device;
-                    console.log(`[InterceptionExecutor] Using keyboard device: ${device}`);
+                    logger.debug(`Using keyboard device: ${device}`);
                     break;
                 }
             }
             this.initialized = true;
-            console.log('[InterceptionExecutor] Initialized successfully (kernel-level injection ready)');
+            logger.debug('Initialized successfully (kernel-level injection ready)');
             return true;
         }
         catch (error) {
-            console.error('[InterceptionExecutor] Failed to initialize:', error.message);
-            console.error('[InterceptionExecutor] Make sure:');
-            console.error('  1. Interception driver is installed');
-            console.error('  2. ffi-napi and ref-napi are installed: npm install ffi-napi ref-napi');
-            console.error('  3. Running on Windows with proper permissions');
+            logger.error('Failed to initialize:', error.message);
+            logger.error('Make sure:');
+            logger.error('  1. Interception driver is installed');
+            logger.error('  2. ffi-napi and ref-napi are installed: npm install ffi-napi ref-napi');
+            logger.error('  3. Running on Windows with proper permissions');
             return false;
         }
     }
@@ -135,7 +136,7 @@ export class InterceptionExecutor {
             this.ffi.interception_destroy_context(this.context);
             this.context = null;
             this.initialized = false;
-            console.log('[InterceptionExecutor] Context destroyed');
+            logger.debug('Context destroyed');
         }
     }
     /**
@@ -273,7 +274,7 @@ export class InterceptionExecutor {
             validation.errors.forEach(e => console.error(`  - ${e}`));
             return false;
         }
-        console.log(`[InterceptionExecutor] Executing ${sequence.length} steps (Interception/kernel mode)`);
+        logger.debug(`Executing ${sequence.length} steps (Interception/kernel mode)`);
         for (let i = 0; i < sequence.length; i++) {
             const step = sequence[i];
             const echoHits = step.echoHits || 1;
@@ -282,10 +283,10 @@ export class InterceptionExecutor {
                 // Send the key via Interception
                 const success = this.sendKey(step.key);
                 if (!success) {
-                    console.error(`[InterceptionExecutor] Failed to send key: ${step.key}`);
+                    logger.error(`Failed to send key: ${step.key}`);
                     return false;
                 }
-                console.log(`  [${i + 1}/${sequence.length}] ${step.key} (hit ${hit + 1}/${echoHits}) via Interception`);
+                logger.debug(`[${i + 1}/${sequence.length}] ${step.key} (hit ${hit + 1}/${echoHits}) via Interception`);
                 // Delay before next keypress (except after last hit of last step)
                 const isLastHit = hit === echoHits - 1;
                 const isLastStep = i === sequence.length - 1;
@@ -295,7 +296,7 @@ export class InterceptionExecutor {
                 }
             }
         }
-        console.log('[InterceptionExecutor] Sequence completed successfully');
+        logger.debug('Sequence completed successfully');
         return true;
     }
     /**
@@ -319,14 +320,14 @@ export class InterceptionExecutor {
 export class MockInterceptionExecutor {
     initialized = false;
     async initialize() {
-        console.log('[MockInterception] Initialized in MOCK mode (no actual keypresses)');
-        console.log('[MockInterception] Install Interception driver for real kernel-level injection');
+        logger.info('Initialized in MOCK mode (no actual keypresses)');
+        logger.info('Install Interception driver for real kernel-level injection');
         this.initialized = true;
         return true;
     }
     destroy() {
         this.initialized = false;
-        console.log('[MockInterception] Destroyed');
+        logger.debug('Destroyed');
     }
     validateSequence(sequence) {
         const errors = [];
@@ -367,17 +368,17 @@ export class MockInterceptionExecutor {
             return false;
         const validation = this.validateSequence(sequence);
         if (!validation.valid) {
-            console.error('[MockInterception] Validation failed:', validation.errors);
+            logger.error('Validation failed:', validation.errors);
             return false;
         }
-        console.log(`[MockInterception] Would execute ${sequence.length} steps:`);
+        logger.debug(`Would execute ${sequence.length} steps:`);
         let totalPresses = 0;
         for (const step of sequence) {
             const echoHits = step.echoHits || 1;
             totalPresses += echoHits;
-            console.log(`  - ${step.key} x${echoHits} (${step.minDelay}-${step.maxDelay}ms delay)`);
+            logger.debug(`- ${step.key} x${echoHits} (${step.minDelay}-${step.maxDelay}ms delay)`);
         }
-        console.log(`[MockInterception] Total: ${totalPresses} key presses`);
+        logger.debug(`Total: ${totalPresses} key presses`);
         return true;
     }
 }

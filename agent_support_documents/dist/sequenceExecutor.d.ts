@@ -1,6 +1,6 @@
-import { SequenceStep, MacroBinding } from './types.js';
+import { SequenceStep, MacroBinding, CompiledProfile } from "./types.js";
 export interface ExecutionEvent {
-    type: 'started' | 'step' | 'completed' | 'error' | 'cancelled';
+    type: "started" | "step" | "completed" | "error" | "cancelled";
     bindingName: string;
     step?: SequenceStep;
     stepIndex?: number;
@@ -13,7 +13,13 @@ export declare class SequenceExecutor {
     private isExecuting;
     private activeExecutions;
     private callback;
-    constructor(callback?: ExecutionCallback);
+    private compiledProfile;
+    private trafficController;
+    constructor(callback?: ExecutionCallback, compiledProfile?: CompiledProfile);
+    /**
+     * Provide a compiled profile to enable traffic control.
+     */
+    setCompiledProfile(compiled: CompiledProfile): void;
     /**
      * Validate a sequence step meets timing constraints
      */
@@ -26,6 +32,14 @@ export declare class SequenceExecutor {
      * Get randomized delay between min and max (inclusive)
      */
     private getRandomDelay;
+    /**
+     * Parse a step key which may include modifiers like "SHIFT+Q" or "ALT+NUMPAD7"
+     */
+    private parseKey;
+    /**
+     * Buffer tier ranges (inclusive)
+     */
+    private bufferRanges;
     /**
      * Sleep for specified milliseconds
      */

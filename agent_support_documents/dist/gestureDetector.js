@@ -1,7 +1,7 @@
 // ============================================================================
 // GESTURE DETECTOR - Per-key gesture detection with 9 gesture types
 // ============================================================================
-// 
+//
 // FEATURES:
 // - Per-key isolated state machines (22 independent keys)
 // - Simultaneous multi-key gesture detection (press W+A+1+2 at once)
@@ -9,8 +9,8 @@
 // - Non-blocking async-friendly design for concurrent sequences
 //
 // ============================================================================
-import { INPUT_KEYS } from './types.js';
-import { performance } from 'perf_hooks';
+import { INPUT_KEYS, } from "./types.js";
+import { performance } from "perf_hooks";
 // Maximum press count before treating as quadruple
 const MAX_PRESS_COUNT = 4;
 // Per-key state machine for gesture detection
@@ -18,16 +18,16 @@ const MAX_PRESS_COUNT = 4;
 class KeyGestureStateMachine {
     key;
     settings;
-    callback;
+    emitFn;
     pressHistory = [];
     keyDownTime = null;
     gestureTimer = null;
     // Track if we've exceeded the press limit (ignore further presses until reset)
     pressLimitReached = false;
-    constructor(key, settings, callback) {
+    constructor(key, settings, emitFn) {
         this.key = key;
         this.settings = settings;
-        this.callback = callback;
+        this.emitFn = emitFn;
     }
     clearTimers() {
         if (this.gestureTimer) {
@@ -40,12 +40,17 @@ class KeyGestureStateMachine {
         // Emit the gesture via callback (non-blocking)
         // Using queueMicrotask for cross-platform compatibility
         queueMicrotask(() => {
-            this.callback({
-                inputKey: this.key,
-                gesture,
-                timestamp: performance.now(),
-                holdDuration,
-            });
+            try {
+                this.emitFn({
+                    inputKey: this.key,
+                    gesture,
+                    timestamp: performance.now(),
+                    holdDuration,
+                });
+            }
+            catch {
+                // swallow
+            }
         });
         // Reset state (reuse array to reduce allocations)
         this.pressHistory.length = 0;
@@ -72,10 +77,16 @@ class KeyGestureStateMachine {
         let gesture;
         // Helper to map count + pressType -> gesture string
         const mapGesture = (n, type) => {
-            const base = n === 1 ? 'single' : n === 2 ? 'double' : n === 3 ? 'triple' : 'quadruple';
-            if (type === 'normal')
+            const base = n === 1
+                ? "single"
+                : n === 2
+                    ? "double"
+                    : n === 3
+                        ? "triple"
+                        : "quadruple";
+            if (type === "normal")
                 return base;
-            if (type === 'long')
+            if (type === "long")
                 return `${base}_long`;
             return `${base}_super_long`;
         };
@@ -112,17 +123,19 @@ class KeyGestureStateMachine {
             return;
         }
         // Determine press type for this tap based on holdDuration
-        let pressType = 'normal';
-        if (holdDuration >= this.settings.longPressMin && holdDuration <= this.settings.longPressMax) {
-            pressType = 'long';
+        let pressType = "normal";
+        if (holdDuration >= this.settings.longPressMin &&
+            holdDuration <= this.settings.longPressMax) {
+            pressType = "long";
         }
-        else if (holdDuration >= this.settings.superLongMin && holdDuration <= this.settings.superLongMax) {
-            pressType = 'super_long';
+        else if (holdDuration >= this.settings.superLongMin &&
+            holdDuration <= this.settings.superLongMax) {
+            pressType = "super_long";
         }
+        // removed debug logging
         // Check if this press is within multi-press window
         const lastPress = this.pressHistory[this.pressHistory.length - 1];
-        const isWithinWindow = lastPress &&
-            (now - lastPress.timestamp) < this.settings.multiPressWindow;
+        const isWithinWindow = lastPress && now - lastPress.timestamp < this.settings.multiPressWindow;
         if (!isWithinWindow) {
             // Start fresh press sequence (reuse array)
             this.pressHistory.length = 0;
@@ -162,22 +175,50 @@ class KeyGestureStateMachine {
 // ============================================================================
 export class GestureDetector {
     machines = new Map();
-    callback;
+    _callback;
     settings;
+    listeners = new Set();
     // Event queue for burst resilience
     eventQueue = [];
     processingQueue = false;
     constructor(settings, callback) {
         this.settings = settings;
-        this.callback = callback;
+        this._callback = callback;
         // Create independent state machine for each input key
         // Each machine is completely isolated - no shared state
         for (const key of INPUT_KEYS) {
-            this.machines.set(key, new KeyGestureStateMachine(key, settings, callback));
+            this.machines.set(key, new KeyGestureStateMachine(key, settings, (ev) => {
+                try {
+                    this._callback(ev);
+                }
+                catch { }
+                for (const l of this.listeners) {
+                    try {
+                        l(ev);
+                    }
+                    catch { }
+                }
+            }));
         }
-        console.log(`🎯 GestureDetector initialized for ${INPUT_KEYS.length} keys`);
-        console.log(`   Max press count: ${MAX_PRESS_COUNT} (excess = quadruple, no long)`);
-        console.log(`   Simultaneous keys: SUPPORTED (all ${INPUT_KEYS.length} keys independent)`);
+        // initialized
+    }
+    /** Replace the callback used by all per-key machines at runtime */
+    setCallback(cb) {
+        this._callback = cb;
+    }
+    /** Subscribe to gesture events without replacing the central callback */
+    onGesture(cb) {
+        this.listeners.add(cb);
+    }
+    /** Unsubscribe a previously registered gesture listener */
+    offGesture(cb) {
+        this.listeners.delete(cb);
+    }
+    get callback() {
+        return this._callback;
+    }
+    set callback(cb) {
+        this.setCallback(cb);
     }
     /**
      * Queue a key event for processing
@@ -203,7 +244,7 @@ export class GestureDetector {
         const upperKey = event.key.toUpperCase();
         const machine = this.machines.get(upperKey);
         if (machine) {
-            if (event.type === 'down') {
+            if (event.type === "down") {
                 machine.handleKeyDown();
             }
             else {
@@ -221,16 +262,16 @@ export class GestureDetector {
         }
     }
     handleKeyDown(key) {
-        this.queueEvent('down', key);
+        this.queueEvent("down", key);
     }
     handleKeyUp(key) {
-        this.queueEvent('up', key);
+        this.queueEvent("up", key);
     }
     handleMouseDown(button) {
-        this.queueEvent('down', button);
+        this.queueEvent("down", button);
     }
     handleMouseUp(button) {
-        this.queueEvent('up', button);
+        this.queueEvent("up", button);
     }
     reset() {
         // Clear event queue
@@ -246,7 +287,18 @@ export class GestureDetector {
         // Recreate machines with new settings
         this.machines.clear();
         for (const key of INPUT_KEYS) {
-            this.machines.set(key, new KeyGestureStateMachine(key, settings, this.callback));
+            this.machines.set(key, new KeyGestureStateMachine(key, settings, (ev) => {
+                try {
+                    this._callback(ev);
+                }
+                catch { }
+                for (const l of this.listeners) {
+                    try {
+                        l(ev);
+                    }
+                    catch { }
+                }
+            }));
         }
     }
     /**

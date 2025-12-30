@@ -1,17 +1,17 @@
 /**
  * Interception Driver Executor - Phase 2
- * 
+ *
  * Uses the Interception driver for kernel-level input injection.
  * Input appears to come from real hardware devices, making it much
  * harder for anti-cheat systems to detect.
- * 
+ *
  * Detection level: HARD (kernel-level, no LLKHF_INJECTED flag)
- * 
+ *
  * Requirements:
  * - Interception driver installed (https://github.com/oblitum/Interception)
  * - Windows only
  * - Administrator privileges for driver installation
- * 
+ *
  * How it works:
  * 1. Interception hooks into the Windows input stack at kernel level
  * 2. We create a "virtual" keyboard device context
@@ -19,7 +19,8 @@
  * 4. No software injection flags are set
  */
 
-import { SequenceStep, MacroBinding, SEQUENCE_CONSTRAINTS } from './types.js';
+import { SequenceStep, MacroBinding, SEQUENCE_CONSTRAINTS } from "./types.js";
+import { logger } from "./logger.js";
 
 // Interception key codes (scan codes)
 // These are hardware scan codes, not virtual key codes
@@ -31,64 +32,119 @@ interface ScanCodeEntry {
 
 const SCAN_CODES: Record<string, ScanCodeEntry> = {
   // Number row
-  '1': { code: 0x02 }, '2': { code: 0x03 }, '3': { code: 0x04 }, '4': { code: 0x05 }, '5': { code: 0x06 },
-  '6': { code: 0x07 }, '7': { code: 0x08 }, '8': { code: 0x09 }, '9': { code: 0x0A }, '0': { code: 0x0B },
-  
+  "1": { code: 0x02 },
+  "2": { code: 0x03 },
+  "3": { code: 0x04 },
+  "4": { code: 0x05 },
+  "5": { code: 0x06 },
+  "6": { code: 0x07 },
+  "7": { code: 0x08 },
+  "8": { code: 0x09 },
+  "9": { code: 0x0a },
+  "0": { code: 0x0b },
+
   // QWERTY row
-  'q': { code: 0x10 }, 'w': { code: 0x11 }, 'e': { code: 0x12 }, 'r': { code: 0x13 }, 't': { code: 0x14 },
-  'y': { code: 0x15 }, 'u': { code: 0x16 }, 'i': { code: 0x17 }, 'o': { code: 0x18 }, 'p': { code: 0x19 },
-  
+  q: { code: 0x10 },
+  w: { code: 0x11 },
+  e: { code: 0x12 },
+  r: { code: 0x13 },
+  t: { code: 0x14 },
+  y: { code: 0x15 },
+  u: { code: 0x16 },
+  i: { code: 0x17 },
+  o: { code: 0x18 },
+  p: { code: 0x19 },
+
   // ASDF row
-  'a': { code: 0x1E }, 's': { code: 0x1F }, 'd': { code: 0x20 }, 'f': { code: 0x21 }, 'g': { code: 0x22 },
-  'h': { code: 0x23 }, 'j': { code: 0x24 }, 'k': { code: 0x25 }, 'l': { code: 0x26 },
-  
+  a: { code: 0x1e },
+  s: { code: 0x1f },
+  d: { code: 0x20 },
+  f: { code: 0x21 },
+  g: { code: 0x22 },
+  h: { code: 0x23 },
+  j: { code: 0x24 },
+  k: { code: 0x25 },
+  l: { code: 0x26 },
+
   // ZXCV row
-  'z': { code: 0x2C }, 'x': { code: 0x2D }, 'c': { code: 0x2E }, 'v': { code: 0x2F }, 'b': { code: 0x30 },
-  'n': { code: 0x31 }, 'm': { code: 0x32 },
-  
+  z: { code: 0x2c },
+  x: { code: 0x2d },
+  c: { code: 0x2e },
+  v: { code: 0x2f },
+  b: { code: 0x30 },
+  n: { code: 0x31 },
+  m: { code: 0x32 },
+
   // Function keys
-  'f1': { code: 0x3B }, 'f2': { code: 0x3C }, 'f3': { code: 0x3D }, 'f4': { code: 0x3E },
-  'f5': { code: 0x3F }, 'f6': { code: 0x40 }, 'f7': { code: 0x41 }, 'f8': { code: 0x42 },
-  'f9': { code: 0x43 }, 'f10': { code: 0x44 }, 'f11': { code: 0x57 }, 'f12': { code: 0x58 },
-  
+  f1: { code: 0x3b },
+  f2: { code: 0x3c },
+  f3: { code: 0x3d },
+  f4: { code: 0x3e },
+  f5: { code: 0x3f },
+  f6: { code: 0x40 },
+  f7: { code: 0x41 },
+  f8: { code: 0x42 },
+  f9: { code: 0x43 },
+  f10: { code: 0x44 },
+  f11: { code: 0x57 },
+  f12: { code: 0x58 },
+
   // Special keys
-  'space': { code: 0x39 }, 'enter': { code: 0x1C }, 'escape': { code: 0x01 },
-  'tab': { code: 0x0F }, 'backspace': { code: 0x0E },
-  
+  space: { code: 0x39 },
+  enter: { code: 0x1c },
+  escape: { code: 0x01 },
+  tab: { code: 0x0f },
+  backspace: { code: 0x0e },
+
   // Numpad (NOT extended - these are the numpad keys)
-  'num0': { code: 0x52 }, 'num1': { code: 0x4F }, 'num2': { code: 0x50 }, 'num3': { code: 0x51 },
-  'num4': { code: 0x4B }, 'num5': { code: 0x4C }, 'num6': { code: 0x4D },
-  'num7': { code: 0x47 }, 'num8': { code: 0x48 }, 'num9': { code: 0x49 },
-  'numplus': { code: 0x4E }, 'numminus': { code: 0x4A },
-  'nummultiply': { code: 0x37 }, 'numdivide': { code: 0x35, isExtended: true },
-  'numenter': { code: 0x1C, isExtended: true },
-  
+  num0: { code: 0x52 },
+  num1: { code: 0x4f },
+  num2: { code: 0x50 },
+  num3: { code: 0x51 },
+  num4: { code: 0x4b },
+  num5: { code: 0x4c },
+  num6: { code: 0x4d },
+  num7: { code: 0x47 },
+  num8: { code: 0x48 },
+  num9: { code: 0x49 },
+  numplus: { code: 0x4e },
+  numminus: { code: 0x4a },
+  nummultiply: { code: 0x37 },
+  numdivide: { code: 0x35, isExtended: true },
+  numenter: { code: 0x1c, isExtended: true },
+
   // Arrow keys (EXTENDED - require E0 flag to distinguish from numpad)
-  'up': { code: 0x48, isExtended: true },
-  'down': { code: 0x50, isExtended: true },
-  'left': { code: 0x4B, isExtended: true },
-  'right': { code: 0x4D, isExtended: true },
-  
+  up: { code: 0x48, isExtended: true },
+  down: { code: 0x50, isExtended: true },
+  left: { code: 0x4b, isExtended: true },
+  right: { code: 0x4d, isExtended: true },
+
   // Navigation keys (EXTENDED)
-  'insert': { code: 0x52, isExtended: true },
-  'delete': { code: 0x53, isExtended: true },
-  'home': { code: 0x47, isExtended: true },
-  'end': { code: 0x4F, isExtended: true },
-  'pageup': { code: 0x49, isExtended: true },
-  'pagedown': { code: 0x51, isExtended: true },
-  
+  insert: { code: 0x52, isExtended: true },
+  delete: { code: 0x53, isExtended: true },
+  home: { code: 0x47, isExtended: true },
+  end: { code: 0x4f, isExtended: true },
+  pageup: { code: 0x49, isExtended: true },
+  pagedown: { code: 0x51, isExtended: true },
+
   // Other
-  'minus': { code: 0x0C }, 'equals': { code: 0x0D },
-  'leftbracket': { code: 0x1A }, 'rightbracket': { code: 0x1B },
-  'semicolon': { code: 0x27 }, 'quote': { code: 0x28 },
-  'comma': { code: 0x33 }, 'period': { code: 0x34 }, 'slash': { code: 0x35 },
-  'backslash': { code: 0x2B }, 'grave': { code: 0x29 },
+  minus: { code: 0x0c },
+  equals: { code: 0x0d },
+  leftbracket: { code: 0x1a },
+  rightbracket: { code: 0x1b },
+  semicolon: { code: 0x27 },
+  quote: { code: 0x28 },
+  comma: { code: 0x33 },
+  period: { code: 0x34 },
+  slash: { code: 0x35 },
+  backslash: { code: 0x2b },
+  grave: { code: 0x29 },
 };
 
 // Interception stroke structure
 interface InterceptionKeyStroke {
-  code: number;      // Scan code
-  state: number;     // 0 = down, 1 = up
+  code: number; // Scan code
+  state: number; // 0 = down, 1 = up
   information: number;
 }
 
@@ -99,16 +155,31 @@ type InterceptionDevice = number;
 // Key states for Interception
 const KEY_DOWN = 0x00;
 const KEY_UP = 0x01;
-const KEY_E0 = 0x02;  // Extended key flag
+const KEY_E0 = 0x02; // Extended key flag
 
 // FFI bindings interface (will be loaded dynamically)
 interface InterceptionFFI {
   interception_create_context(): InterceptionContext;
   interception_destroy_context(context: InterceptionContext): void;
-  interception_get_hardware_id(context: InterceptionContext, device: InterceptionDevice, buffer: Buffer, size: number): number;
-  interception_send(context: InterceptionContext, device: InterceptionDevice, stroke: Buffer, nstroke: number): number;
+  interception_get_hardware_id(
+    context: InterceptionContext,
+    device: InterceptionDevice,
+    buffer: Buffer,
+    size: number
+  ): number;
+  interception_send(
+    context: InterceptionContext,
+    device: InterceptionDevice,
+    stroke: Buffer,
+    nstroke: number
+  ): number;
   interception_wait(context: InterceptionContext): InterceptionDevice;
-  interception_receive(context: InterceptionContext, device: InterceptionDevice, stroke: Buffer, nstroke: number): number;
+  interception_receive(
+    context: InterceptionContext,
+    device: InterceptionDevice,
+    stroke: Buffer,
+    nstroke: number
+  ): number;
   interception_is_keyboard(device: InterceptionDevice): boolean;
   interception_is_mouse(device: InterceptionDevice): boolean;
 }
@@ -120,7 +191,9 @@ export class InterceptionExecutor {
   private initialized: boolean = false;
   private dllPath: string;
 
-  constructor(dllPath: string = 'C:\\Program Files\\Interception\\library\\x64\\interception.dll') {
+  constructor(
+    dllPath: string = "C:\\Program Files\\Interception\\library\\x64\\interception.dll"
+  ) {
     this.dllPath = dllPath;
   }
 
@@ -132,27 +205,32 @@ export class InterceptionExecutor {
       // Dynamic import of ffi-napi (Windows only, native module)
       // These packages must be installed separately: npm install ffi-napi ref-napi
       // @ts-ignore - dynamic import, only works on Windows with native modules
-      const ffi = await import('ffi-napi');
+      const ffi = await import("ffi-napi");
       // @ts-ignore - dynamic import
-      const ref = await import('ref-napi');
+      const ref = await import("ref-napi");
 
       // Define the Interception library interface
       this.ffi = ffi.Library(this.dllPath, {
-        'interception_create_context': ['pointer', []],
-        'interception_destroy_context': ['void', ['pointer']],
-        'interception_get_hardware_id': ['int', ['pointer', 'int', 'pointer', 'int']],
-        'interception_send': ['int', ['pointer', 'int', 'pointer', 'int']],
-        'interception_wait': ['int', ['pointer']],
-        'interception_receive': ['int', ['pointer', 'int', 'pointer', 'int']],
-        'interception_is_keyboard': ['bool', ['int']],
-        'interception_is_mouse': ['bool', ['int']],
+        interception_create_context: ["pointer", []],
+        interception_destroy_context: ["void", ["pointer"]],
+        interception_get_hardware_id: [
+          "int",
+          ["pointer", "int", "pointer", "int"],
+        ],
+        interception_send: ["int", ["pointer", "int", "pointer", "int"]],
+        interception_wait: ["int", ["pointer"]],
+        interception_receive: ["int", ["pointer", "int", "pointer", "int"]],
+        interception_is_keyboard: ["bool", ["int"]],
+        interception_is_mouse: ["bool", ["int"]],
       }) as unknown as InterceptionFFI;
 
       // Create context
       this.context = this.ffi.interception_create_context();
-      
+
       if (!this.context) {
-        console.error('[InterceptionExecutor] Failed to create context - is driver installed?');
+        console.error(
+          "[InterceptionExecutor] Failed to create context - is driver installed?"
+        );
         return false;
       }
 
@@ -160,20 +238,22 @@ export class InterceptionExecutor {
       for (let device = 1; device <= 10; device++) {
         if (this.ffi.interception_is_keyboard(device)) {
           this.keyboardDevice = device;
-          console.log(`[InterceptionExecutor] Using keyboard device: ${device}`);
+          logger.debug(`Using keyboard device: ${device}`);
           break;
         }
       }
 
       this.initialized = true;
-      console.log('[InterceptionExecutor] Initialized successfully (kernel-level injection ready)');
+      logger.debug("Initialized successfully (kernel-level injection ready)");
       return true;
     } catch (error: any) {
-      console.error('[InterceptionExecutor] Failed to initialize:', error.message);
-      console.error('[InterceptionExecutor] Make sure:');
-      console.error('  1. Interception driver is installed');
-      console.error('  2. ffi-napi and ref-napi are installed: npm install ffi-napi ref-napi');
-      console.error('  3. Running on Windows with proper permissions');
+      logger.error("Failed to initialize:", error.message);
+      logger.error("Make sure:");
+      logger.error("  1. Interception driver is installed");
+      logger.error(
+        "  2. ffi-napi and ref-napi are installed: npm install ffi-napi ref-napi"
+      );
+      logger.error("  3. Running on Windows with proper permissions");
       return false;
     }
   }
@@ -186,7 +266,7 @@ export class InterceptionExecutor {
       this.ffi.interception_destroy_context(this.context);
       this.context = null;
       this.initialized = false;
-      console.log('[InterceptionExecutor] Context destroyed');
+      logger.debug("Context destroyed");
     }
   }
 
@@ -205,13 +285,17 @@ export class InterceptionExecutor {
    *   unsigned short state (2 bytes)
    *   unsigned int information (4 bytes)
    */
-  private createStrokeBuffer(code: number, state: number, isExtended: boolean = false): Buffer {
+  private createStrokeBuffer(
+    code: number,
+    state: number,
+    isExtended: boolean = false
+  ): Buffer {
     const buffer = Buffer.alloc(8);
-    buffer.writeUInt16LE(code, 0);      // scan code
+    buffer.writeUInt16LE(code, 0); // scan code
     // State: 0=down, 1=up, 2=E0 (extended), 3=E0+up
-    const fullState = isExtended ? (state | KEY_E0) : state;
+    const fullState = isExtended ? state | KEY_E0 : state;
     buffer.writeUInt16LE(fullState, 2);
-    buffer.writeUInt32LE(0, 4);         // information (unused)
+    buffer.writeUInt32LE(0, 4); // information (unused)
     return buffer;
   }
 
@@ -220,7 +304,7 @@ export class InterceptionExecutor {
    */
   private sendKey(key: string): boolean {
     if (!this.initialized || !this.ffi || !this.context) {
-      console.error('[InterceptionExecutor] Not initialized');
+      console.error("[InterceptionExecutor] Not initialized");
       return false;
     }
 
@@ -233,8 +317,17 @@ export class InterceptionExecutor {
     const isExtended = entry.isExtended ?? false;
 
     // Key down
-    const downStroke = this.createStrokeBuffer(entry.code, KEY_DOWN, isExtended);
-    this.ffi.interception_send(this.context, this.keyboardDevice, downStroke, 1);
+    const downStroke = this.createStrokeBuffer(
+      entry.code,
+      KEY_DOWN,
+      isExtended
+    );
+    this.ffi.interception_send(
+      this.context,
+      this.keyboardDevice,
+      downStroke,
+      1
+    );
 
     // Small delay between down and up (5-15ms, human-like)
     const holdTime = Math.floor(Math.random() * 10) + 5;
@@ -277,13 +370,18 @@ export class InterceptionExecutor {
   /**
    * Validate a sequence before execution
    */
-  validateSequence(sequence: SequenceStep[]): { valid: boolean; errors: string[] } {
+  validateSequence(sequence: SequenceStep[]): {
+    valid: boolean;
+    errors: string[];
+  } {
     const errors: string[] = [];
 
     // Check unique keys constraint
-    const uniqueKeys = new Set(sequence.map(s => s.key.toLowerCase()));
+    const uniqueKeys = new Set(sequence.map((s) => s.key.toLowerCase()));
     if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
-      errors.push(`Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`);
+      errors.push(
+        `Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`
+      );
     }
 
     // Count STEPS per key (not total presses - echoHits don't count toward step limit)
@@ -293,19 +391,25 @@ export class InterceptionExecutor {
     for (const step of sequence) {
       // Min delay check
       if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
-        errors.push(`Step ${step.key}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`);
+        errors.push(
+          `Step ${step.key}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`
+        );
       }
 
       // Variance check
       const variance = step.maxDelay - step.minDelay;
       if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
-        errors.push(`Step ${step.key}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`);
+        errors.push(
+          `Step ${step.key}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`
+        );
       }
 
       // Echo hits check (per-step, 1-6 allowed)
       const echoHits = step.echoHits || 1;
       if (echoHits < 1 || echoHits > SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS) {
-        errors.push(`Step ${step.key}: echoHits must be 1-${SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS} (got ${echoHits})`);
+        errors.push(
+          `Step ${step.key}: echoHits must be 1-${SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS} (got ${echoHits})`
+        );
       }
 
       // Count steps per key (NOT including echoHits - those are just repetitions)
@@ -322,7 +426,9 @@ export class InterceptionExecutor {
     // Check max steps per key (echoHits are separate - they're just repetitions within a step)
     for (const [key, count] of keyStepCount) {
       if (count > SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY) {
-        errors.push(`Key "${key}" used in ${count} steps, maximum is ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} steps per key`);
+        errors.push(
+          `Key "${key}" used in ${count} steps, maximum is ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} steps per key`
+        );
       }
     }
 
@@ -335,19 +441,23 @@ export class InterceptionExecutor {
    */
   async executeSequence(sequence: SequenceStep[]): Promise<boolean> {
     if (!this.initialized) {
-      console.error('[InterceptionExecutor] Not initialized - call initialize() first');
+      console.error(
+        "[InterceptionExecutor] Not initialized - call initialize() first"
+      );
       return false;
     }
 
     // Validate before execution
     const validation = this.validateSequence(sequence);
     if (!validation.valid) {
-      console.error('[InterceptionExecutor] Sequence validation failed:');
-      validation.errors.forEach(e => console.error(`  - ${e}`));
+      console.error("[InterceptionExecutor] Sequence validation failed:");
+      validation.errors.forEach((e) => console.error(`  - ${e}`));
       return false;
     }
 
-    console.log(`[InterceptionExecutor] Executing ${sequence.length} steps (Interception/kernel mode)`);
+    logger.debug(
+      `Executing ${sequence.length} steps (Interception/kernel mode)`
+    );
 
     for (let i = 0; i < sequence.length; i++) {
       const step = sequence[i];
@@ -358,16 +468,20 @@ export class InterceptionExecutor {
         // Send the key via Interception
         const success = this.sendKey(step.key);
         if (!success) {
-          console.error(`[InterceptionExecutor] Failed to send key: ${step.key}`);
+          logger.error(`Failed to send key: ${step.key}`);
           return false;
         }
 
-        console.log(`  [${i + 1}/${sequence.length}] ${step.key} (hit ${hit + 1}/${echoHits}) via Interception`);
+        logger.debug(
+          `[${i + 1}/${sequence.length}] ${step.key} (hit ${
+            hit + 1
+          }/${echoHits}) via Interception`
+        );
 
         // Delay before next keypress (except after last hit of last step)
         const isLastHit = hit === echoHits - 1;
         const isLastStep = i === sequence.length - 1;
-        
+
         if (!isLastStep || !isLastHit) {
           const delay = this.getRandomDelay(step.minDelay, step.maxDelay);
           await this.preciseSleep(delay);
@@ -375,7 +489,7 @@ export class InterceptionExecutor {
       }
     }
 
-    console.log('[InterceptionExecutor] Sequence completed successfully');
+    logger.debug("Sequence completed successfully");
     return true;
   }
 
@@ -384,8 +498,9 @@ export class InterceptionExecutor {
    */
   static async isAvailable(): Promise<boolean> {
     try {
-      const fs = await import('fs');
-      const defaultPath = 'C:\\Program Files\\Interception\\library\\x64\\interception.dll';
+      const fs = await import("fs");
+      const defaultPath =
+        "C:\\Program Files\\Interception\\library\\x64\\interception.dll";
       return fs.existsSync(defaultPath);
     } catch {
       return false;
@@ -401,23 +516,28 @@ export class MockInterceptionExecutor {
   private initialized: boolean = false;
 
   async initialize(): Promise<boolean> {
-    console.log('[MockInterception] Initialized in MOCK mode (no actual keypresses)');
-    console.log('[MockInterception] Install Interception driver for real kernel-level injection');
+    logger.info("Initialized in MOCK mode (no actual keypresses)");
+    logger.info("Install Interception driver for real kernel-level injection");
     this.initialized = true;
     return true;
   }
 
   destroy(): void {
     this.initialized = false;
-    console.log('[MockInterception] Destroyed');
+    logger.debug("Destroyed");
   }
 
-  validateSequence(sequence: SequenceStep[]): { valid: boolean; errors: string[] } {
+  validateSequence(sequence: SequenceStep[]): {
+    valid: boolean;
+    errors: string[];
+  } {
     const errors: string[] = [];
-    const uniqueKeys = new Set(sequence.map(s => s.key.toLowerCase()));
-    
+    const uniqueKeys = new Set(sequence.map((s) => s.key.toLowerCase()));
+
     if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
-      errors.push(`Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`);
+      errors.push(
+        `Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`
+      );
     }
 
     // Count STEPS per key (not total presses - echoHits don't count toward step limit)
@@ -425,17 +545,23 @@ export class MockInterceptionExecutor {
 
     for (const step of sequence) {
       if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
-        errors.push(`Step ${step.key}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`);
+        errors.push(
+          `Step ${step.key}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`
+        );
       }
       const variance = step.maxDelay - step.minDelay;
       if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
-        errors.push(`Step ${step.key}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`);
+        errors.push(
+          `Step ${step.key}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`
+        );
       }
-      
+
       // Echo hits check (per-step, 1-6 allowed)
       const echoHits = step.echoHits || 1;
       if (echoHits < 1 || echoHits > SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS) {
-        errors.push(`Step ${step.key}: echoHits must be 1-${SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS} (got ${echoHits})`);
+        errors.push(
+          `Step ${step.key}: echoHits must be 1-${SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS} (got ${echoHits})`
+        );
       }
 
       // Count steps per key (NOT including echoHits)
@@ -447,7 +573,9 @@ export class MockInterceptionExecutor {
     // Check max steps per key (echoHits are separate)
     for (const [key, count] of keyStepCount) {
       if (count > SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY) {
-        errors.push(`Key "${key}" used in ${count} steps, maximum is ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} steps per key`);
+        errors.push(
+          `Key "${key}" used in ${count} steps, maximum is ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} steps per key`
+        );
       }
     }
 
@@ -459,18 +587,20 @@ export class MockInterceptionExecutor {
 
     const validation = this.validateSequence(sequence);
     if (!validation.valid) {
-      console.error('[MockInterception] Validation failed:', validation.errors);
+      logger.error("Validation failed:", validation.errors);
       return false;
     }
 
-    console.log(`[MockInterception] Would execute ${sequence.length} steps:`);
+    logger.debug(`Would execute ${sequence.length} steps:`);
     let totalPresses = 0;
     for (const step of sequence) {
       const echoHits = step.echoHits || 1;
       totalPresses += echoHits;
-      console.log(`  - ${step.key} x${echoHits} (${step.minDelay}-${step.maxDelay}ms delay)`);
+      logger.debug(
+        `- ${step.key} x${echoHits} (${step.minDelay}-${step.maxDelay}ms delay)`
+      );
     }
-    console.log(`[MockInterception] Total: ${totalPresses} key presses`);
+    logger.debug(`Total: ${totalPresses} key presses`);
     return true;
   }
 }
