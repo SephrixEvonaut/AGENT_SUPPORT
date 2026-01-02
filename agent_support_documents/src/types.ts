@@ -2,7 +2,7 @@
 // SWTOR MACRO AGENT - TYPE DEFINITIONS
 // ============================================================================
 
-// 22 Input Keys for gesture detection
+// 25 Input Keys for gesture detection
 export const INPUT_KEYS = [
   "W",
   "A",
@@ -10,11 +10,11 @@ export const INPUT_KEYS = [
   "D",
   "B",
   "I",
+  "Y",
+  "U",
   "T",
   "C",
   "H",
-  "Y",
-  "U",
   "P",
   "1",
   "2",
@@ -22,6 +22,9 @@ export const INPUT_KEYS = [
   "4",
   "5",
   "6",
+  "7",
+  "8",
+  "9",
   "LEFT_CLICK",
   "RIGHT_CLICK",
   "MIDDLE_CLICK",
@@ -75,9 +78,10 @@ export const OUTPUT_KEYS = [
   "NUMPAD_DECIMAL",
   "NUMPAD_SUBTRACT",
 
-  // Special Keys (2 keys)
+  // Special Keys (3 keys)
   "BACKSPACE",
   "END",
+  "ESCAPE",
 ] as const;
 
 export type OutputKey = (typeof OUTPUT_KEYS)[number];
@@ -121,6 +125,24 @@ export interface SequenceStep {
    * If omitted, falls back to using minDelay/maxDelay behavior.
    */
   bufferTier?: "low" | "medium" | "high";
+
+  /**
+   * Optional second key to press simultaneously (dual key press).
+   * Must be a valid OutputKey.
+   */
+  dualKey?: OutputKey;
+
+  /**
+   * Delay in ms before pressing the second key (after primary key down).
+   * Must be >= 1ms if provided. Defaults to 6ms.
+   */
+  dualKeyOffsetMs?: number;
+
+  /**
+   * How long to hold the dual key down (inclusive range in ms).
+   * Defaults to same as keyDownDuration if omitted.
+   */
+  dualKeyDownDuration?: [number, number];
 }
 
 // A macro binding: gesture triggers a sequence

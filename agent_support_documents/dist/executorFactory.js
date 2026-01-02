@@ -1,14 +1,14 @@
 // ============================================================================
 // EXECUTOR FACTORY - Backend selection for keypress injection
 // ============================================================================
-import { SequenceExecutor } from './sequenceExecutor.js';
-import { InterceptionExecutor, MockInterceptionExecutor } from './interceptionExecutor.js';
-import { logger } from './logger.js';
+import { SequenceExecutor, } from "./sequenceExecutor.js";
+import { InterceptionExecutor, MockInterceptionExecutor, } from "./interceptionExecutor.js";
+import { logger } from "./logger.js";
 /**
  * Default configuration
  */
 const DEFAULT_CONFIG = {
-    backend: 'robotjs',
+    backend: "robotjs",
 };
 /**
  * Wrapper for InterceptionExecutor to match the IExecutor interface
@@ -42,16 +42,16 @@ class InterceptionExecutorWrapper {
         this.activeExecutions.set(binding.name, true);
         this.activeCount++;
         this.onEvent({
-            type: 'started',
+            type: "started",
             bindingName: binding.name,
             timestamp: Date.now(),
         });
         try {
             const result = await this.executor.executeSequence(binding.sequence);
             this.onEvent({
-                type: result ? 'completed' : 'error',
+                type: result ? "completed" : "error",
                 bindingName: binding.name,
-                error: result ? undefined : 'Execution failed',
+                error: result ? undefined : "Execution failed",
                 timestamp: Date.now(),
             });
             return result;
@@ -81,25 +81,25 @@ export class ExecutorFactory {
     static async create(config = {}) {
         const fullConfig = { ...DEFAULT_CONFIG, ...config };
         switch (fullConfig.backend) {
-            case 'robotjs':
-                logger.debug('Creating RobotJS executor (SendInput API)');
-                logger.debug('Detection level: MEDIUM (software injection flag set)');
+            case "robotjs":
+                logger.debug("Creating RobotJS executor (SendInput API)");
+                logger.debug("Detection level: MEDIUM (software injection flag set)");
                 return new SequenceExecutor(fullConfig.onEvent);
-            case 'interception':
-                logger.debug('Creating Interception executor (kernel-level)');
-                logger.debug('Detection level: HARD (appears as hardware input)');
+            case "interception":
+                logger.debug("Creating Interception executor (kernel-level)");
+                logger.debug("Detection level: HARD (appears as hardware input)");
                 const interception = new InterceptionExecutor(fullConfig.interceptionDllPath);
                 const initialized = await interception.initialize();
                 if (!initialized) {
-                    logger.warn('Interception init failed, falling back to mock');
+                    logger.warn("Interception init failed, falling back to mock");
                     const mock = new MockInterceptionExecutor();
                     await mock.initialize();
                     return new InterceptionExecutorWrapper(mock, fullConfig.onEvent);
                 }
                 return new InterceptionExecutorWrapper(interception, fullConfig.onEvent);
-            case 'mock':
-                logger.debug('Creating Mock executor (no keypresses)');
-                logger.debug('Use this for testing profile logic');
+            case "mock":
+                logger.debug("Creating Mock executor (no keypresses)");
+                logger.debug("Use this for testing profile logic");
                 const mock = new MockInterceptionExecutor();
                 await mock.initialize();
                 return new InterceptionExecutorWrapper(mock, fullConfig.onEvent);
@@ -113,26 +113,29 @@ export class ExecutorFactory {
      */
     static async createBest(onEvent) {
         // Try Interception first (best for anti-cheat)
-        if (process.platform === 'win32') {
+        if (process.platform === "win32") {
             const available = await InterceptionExecutor.isAvailable();
             if (available) {
-                logger.debug('Interception driver detected');
-                const executor = await this.create({ backend: 'interception', onEvent });
-                return { executor, backend: 'interception' };
+                logger.debug("Interception driver detected");
+                const executor = await this.create({
+                    backend: "interception",
+                    onEvent,
+                });
+                return { executor, backend: "interception" };
             }
         }
         // Fall back to RobotJS
         try {
-            const executor = await this.create({ backend: 'robotjs', onEvent });
-            return { executor, backend: 'robotjs' };
+            const executor = await this.create({ backend: "robotjs", onEvent });
+            return { executor, backend: "robotjs" };
         }
         catch (error) {
-            console.warn('[ExecutorFactory] RobotJS not available:', error);
+            console.warn("[ExecutorFactory] RobotJS not available:", error);
         }
         // Final fallback to mock
-        console.warn('[ExecutorFactory] No real executors available, using mock');
-        const executor = await this.create({ backend: 'mock', onEvent });
-        return { executor, backend: 'mock' };
+        console.warn("[ExecutorFactory] No real executors available, using mock");
+        const executor = await this.create({ backend: "mock", onEvent });
+        return { executor, backend: "mock" };
     }
     /**
      * Get information about available backends
@@ -140,44 +143,44 @@ export class ExecutorFactory {
     static async getAvailableBackends() {
         const backends = [];
         // Check Interception
-        if (process.platform === 'win32') {
+        if (process.platform === "win32") {
             const interceptionAvailable = await InterceptionExecutor.isAvailable();
             backends.push({
-                backend: 'interception',
+                backend: "interception",
                 available: interceptionAvailable,
                 notes: interceptionAvailable
-                    ? 'Kernel-level injection (hardest to detect)'
-                    : 'Install driver from github.com/oblitum/Interception',
+                    ? "Kernel-level injection (hardest to detect)"
+                    : "Install driver from github.com/oblitum/Interception",
             });
         }
         else {
             backends.push({
-                backend: 'interception',
+                backend: "interception",
                 available: false,
-                notes: 'Windows only',
+                notes: "Windows only",
             });
         }
         // Check RobotJS
         try {
-            await import('robotjs');
+            await import("robotjs");
             backends.push({
-                backend: 'robotjs',
+                backend: "robotjs",
                 available: true,
-                notes: 'SendInput API (medium detection risk)',
+                notes: "SendInput API (medium detection risk)",
             });
         }
         catch {
             backends.push({
-                backend: 'robotjs',
+                backend: "robotjs",
                 available: false,
-                notes: 'Install with: npm install robotjs',
+                notes: "Install with: npm install robotjs",
             });
         }
         // Mock is always available
         backends.push({
-            backend: 'mock',
+            backend: "mock",
             available: true,
-            notes: 'Testing only (no keypresses sent)',
+            notes: "Testing only (no keypresses sent)",
         });
         return backends;
     }

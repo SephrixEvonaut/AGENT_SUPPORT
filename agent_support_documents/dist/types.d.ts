@@ -1,6 +1,6 @@
-export declare const INPUT_KEYS: readonly ["W", "A", "S", "D", "B", "I", "T", "C", "H", "Y", "U", "P", "1", "2", "3", "4", "5", "6", "LEFT_CLICK", "RIGHT_CLICK", "MIDDLE_CLICK", "SCROLL_UP"];
+export declare const INPUT_KEYS: readonly ["W", "A", "S", "D", "B", "I", "Y", "U", "T", "C", "H", "P", "1", "2", "3", "4", "5", "6", "7", "8", "9", "LEFT_CLICK", "RIGHT_CLICK", "MIDDLE_CLICK", "SCROLL_UP"];
 export type InputKey = (typeof INPUT_KEYS)[number];
-export declare const OUTPUT_KEYS: readonly ["J", "K", "L", "M", "N", "O", "Q", "R", "V", "X", "Z", ",", ".", "'", ";", "]", "[", "F6", "F7", "F8", "F9", "NUMPAD0", "NUMPAD1", "NUMPAD2", "NUMPAD3", "NUMPAD4", "NUMPAD5", "NUMPAD6", "NUMPAD7", "NUMPAD8", "NUMPAD9", "NUMPAD_ADD", "NUMPAD_MULTIPLY", "NUMPAD_DECIMAL", "NUMPAD_SUBTRACT", "BACKSPACE", "END"];
+export declare const OUTPUT_KEYS: readonly ["J", "K", "L", "M", "N", "O", "Q", "R", "V", "X", "Z", ",", ".", "'", ";", "]", "[", "F6", "F7", "F8", "F9", "NUMPAD0", "NUMPAD1", "NUMPAD2", "NUMPAD3", "NUMPAD4", "NUMPAD5", "NUMPAD6", "NUMPAD7", "NUMPAD8", "NUMPAD9", "NUMPAD_ADD", "NUMPAD_MULTIPLY", "NUMPAD_DECIMAL", "NUMPAD_SUBTRACT", "BACKSPACE", "END", "ESCAPE"];
 export type OutputKey = (typeof OUTPUT_KEYS)[number];
 export declare const GESTURE_TYPES: readonly ["single", "single_long", "single_super_long", "double", "double_long", "double_super_long", "triple", "triple_long", "triple_super_long", "quadruple", "quadruple_long", "quadruple_super_long"];
 export type GestureType = (typeof GESTURE_TYPES)[number];
@@ -20,6 +20,21 @@ export interface SequenceStep {
      * If omitted, falls back to using minDelay/maxDelay behavior.
      */
     bufferTier?: "low" | "medium" | "high";
+    /**
+     * Optional second key to press simultaneously (dual key press).
+     * Must be a valid OutputKey.
+     */
+    dualKey?: OutputKey;
+    /**
+     * Delay in ms before pressing the second key (after primary key down).
+     * Must be >= 1ms if provided. Defaults to 6ms.
+     */
+    dualKeyOffsetMs?: number;
+    /**
+     * How long to hold the dual key down (inclusive range in ms).
+     * Defaults to same as keyDownDuration if omitted.
+     */
+    dualKeyDownDuration?: [number, number];
 }
 export interface MacroBinding {
     name: string;

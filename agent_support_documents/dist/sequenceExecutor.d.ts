@@ -15,6 +15,7 @@ export declare class SequenceExecutor {
     private callback;
     private compiledProfile;
     private trafficController;
+    private timerManager;
     constructor(callback?: ExecutionCallback, compiledProfile?: CompiledProfile);
     /**
      * Provide a compiled profile to enable traffic control.
@@ -87,4 +88,8 @@ export declare class SequenceExecutor {
      * Test execution without actually sending keys (dry run)
      */
     dryRun(binding: MacroBinding): Promise<void>;
+    /**
+     * Shutdown executor and clean up resources
+     */
+    shutdown(): void;
 }

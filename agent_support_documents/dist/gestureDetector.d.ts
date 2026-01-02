@@ -7,6 +7,7 @@ export declare class GestureDetector {
     private listeners;
     private eventQueue;
     private processingQueue;
+    private checkInterval;
     constructor(settings: GestureSettings, callback: GestureCallback);
     /** Replace the callback used by all per-key machines at runtime */
     setCallback(cb: GestureCallback): void;
@@ -16,6 +17,11 @@ export declare class GestureDetector {
     offGesture(cb: GestureCallback): void;
     get callback(): GestureCallback;
     set callback(cb: GestureCallback);
+    /**
+     * Check all key state machines for pending gestures that should be finalized
+     * Called every 50ms by interval timer
+     */
+    private checkAllPendingGestures;
     /**
      * Queue a key event for processing
      * Uses immediate processing for low-latency with queue fallback for bursts

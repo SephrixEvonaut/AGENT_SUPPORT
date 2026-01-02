@@ -45,6 +45,10 @@ class KeyGestureStateMachine {
   // Track if we've exceeded the press limit (ignore further presses until reset)
   private pressLimitReached: boolean = false;
 
+  // Elongating window with dynamic timing: 80ms initial + 50ms per additional tap
+  private windowDeadline: number | null = null;
+  private waitingForRelease: boolean = false; // Must wait for final key release
+
   constructor(
     key: InputKey,
     settings: GestureSettings,
@@ -59,7 +63,6 @@ class KeyGestureStateMachine {
       clearTimeout(this.gestureTimer);
       this.gestureTimer = null;
     }
-    // No other active timers used for classification; we rely on keyUp timing
   }
 
   private emitGesture(gesture: GestureType, holdDuration?: number): void {
@@ -136,6 +139,26 @@ class KeyGestureStateMachine {
     const now = performance.now();
     this.keyDownTime = now;
 
+    // Dynamic elongating window:
+    // - Press 1: 80ms window
+    // - Press 2: adds 50ms → 130ms total window from press 2
+    // - Press 3: adds 50ms → 180ms total window from press 3
+    // - Press 4: no extension, resolve immediately on release
+    if (this.pressHistory.length === 0) {
+      // First press: 80ms window
+      this.windowDeadline = now + 80;
+    } else if (this.pressHistory.length === 1) {
+      // Second press: add 50ms
+      this.windowDeadline = now + 50;
+    } else if (this.pressHistory.length === 2) {
+      // Third press: add 50ms
+      this.windowDeadline = now + 50;
+    } else if (this.pressHistory.length === 3) {
+      // Fourth press: will resolve immediately on release (no window extension)
+      this.windowDeadline = null;
+      this.waitingForRelease = true;
+    }
+
     // Clear any pending gesture resolution timer (we will re-schedule on keyUp)
     if (this.gestureTimer) {
       clearTimeout(this.gestureTimer);
@@ -174,42 +197,37 @@ class KeyGestureStateMachine {
       pressType = "super_long";
     }
 
-    // removed debug logging
-
-    // Check if this press is within multi-press window
-    const lastPress = this.pressHistory[this.pressHistory.length - 1];
+    // Check if this press is within the elongating window
     const isWithinWindow =
-      lastPress && now - lastPress.timestamp < this.settings.multiPressWindow;
+      this.windowDeadline !== null && now <= this.windowDeadline;
 
-    if (!isWithinWindow) {
+    if (!isWithinWindow && !this.waitingForRelease) {
       // Start fresh press sequence (reuse array)
       this.pressHistory.length = 0;
       this.pressLimitReached = false;
+      this.windowDeadline = null;
     }
 
     // Record this press (normal/long/super_long)
     this.pressHistory.push({ timestamp: now, pressType });
 
-    // If we've reached the max press count, resolve immediately to minimize latency
+    // If we've reached the max press count (4th press), resolve immediately after release
+    // This allows us to classify the final press as normal/long/super_long
     if (this.pressHistory.length >= MAX_PRESS_COUNT) {
       this.pressLimitReached = true;
-      // Clear any pending timer
+      this.waitingForRelease = false;
+      // Clear any pending timers
       if (this.gestureTimer) {
         clearTimeout(this.gestureTimer);
         this.gestureTimer = null;
       }
-      // Resolve immediately
+      // Resolve immediately (we just got the release, so we can classify it)
       this.resolveGesture();
       return;
     }
 
-    // Clear existing gesture timer and schedule resolution after multi-press window
-    if (this.gestureTimer) {
-      clearTimeout(this.gestureTimer);
-    }
-    this.gestureTimer = setTimeout(() => {
-      this.resolveGesture();
-    }, this.settings.multiPressWindow);
+    // Gesture finalization is now handled by interval checker in parent GestureDetector
+    // No need to schedule individual setTimeout per key
   }
 
   reset(): void {
@@ -217,6 +235,25 @@ class KeyGestureStateMachine {
     this.pressHistory = [];
     this.keyDownTime = null;
     this.pressLimitReached = false;
+    this.windowDeadline = null;
+    this.waitingForRelease = false;
+  }
+
+  /**
+   * Check if this key has a pending gesture that should be finalized
+   * Called by interval checker in GestureDetector
+   */
+  checkPendingGesture(): void {
+    // Only finalize if we have pending presses and window expired
+    if (this.pressHistory.length === 0) return;
+    if (this.keyDownTime !== null) return; // Still holding key down
+    if (this.waitingForRelease) return; // Waiting for 4th press release
+
+    const now = performance.now();
+    if (this.windowDeadline !== null && now >= this.windowDeadline) {
+      // Window expired, finalize the gesture
+      this.resolveGesture();
+    }
   }
 }
 
@@ -237,6 +274,9 @@ export class GestureDetector {
     timestamp: number;
   }> = [];
   private processingQueue: boolean = false;
+
+  // Interval-based gesture checking (replaces individual timeouts)
+  private checkInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(settings: GestureSettings, callback: GestureCallback) {
     this.settings = settings;
@@ -259,6 +299,11 @@ export class GestureDetector {
         })
       );
     }
+
+    // Start interval-based gesture checker (50ms intervals)
+    this.checkInterval = setInterval(() => {
+      this.checkAllPendingGestures();
+    }, 50);
 
     // initialized
   }
@@ -284,6 +329,16 @@ export class GestureDetector {
 
   set callback(cb: GestureCallback) {
     this.setCallback(cb);
+  }
+
+  /**
+   * Check all key state machines for pending gestures that should be finalized
+   * Called every 50ms by interval timer
+   */
+  private checkAllPendingGestures(): void {
+    for (const machine of this.machines.values()) {
+      machine.checkPendingGesture();
+    }
   }
 
   /**
@@ -358,6 +413,17 @@ export class GestureDetector {
     this.eventQueue = [];
     this.processingQueue = false;
 
+    // Clear interval checker
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
+
+    // Restart interval checker
+    this.checkInterval = setInterval(() => {
+      this.checkAllPendingGestures();
+    }, 50);
+
     // Reset all machines
     for (const machine of this.machines.values()) {
       machine.reset();
@@ -366,6 +432,13 @@ export class GestureDetector {
 
   updateSettings(settings: GestureSettings): void {
     this.settings = settings;
+
+    // Clear existing interval
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
+
     // Recreate machines with new settings
     this.machines.clear();
     for (const key of INPUT_KEYS) {
@@ -383,6 +456,11 @@ export class GestureDetector {
         })
       );
     }
+
+    // Restart interval checker
+    this.checkInterval = setInterval(() => {
+      this.checkAllPendingGestures();
+    }, 50);
   }
 
   /**

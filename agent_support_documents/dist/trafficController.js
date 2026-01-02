@@ -1,9 +1,4 @@
-function randomRange(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-function sleep(ms) {
-    return new Promise((res) => setTimeout(res, ms));
-}
+import { randomRange, sleep, extractRawKey } from "./utils.js";
 export class TrafficController {
     crossingKey = null;
     queue = [];
@@ -12,7 +7,7 @@ export class TrafficController {
         this.compiledProfile = compiledProfile;
     }
     async requestCrossing(key) {
-        const raw = key.split("+").pop().toUpperCase();
+        const raw = extractRawKey(key);
         const isConundrum = this.compiledProfile.conundrumKeys.has(raw);
         if (!isConundrum) {
             return;
@@ -24,7 +19,7 @@ export class TrafficController {
         this.crossingKey = raw;
     }
     releaseCrossing(key) {
-        const raw = key.split("+").pop().toUpperCase();
+        const raw = extractRawKey(key);
         if (this.crossingKey === raw) {
             this.crossingKey = null;
         }

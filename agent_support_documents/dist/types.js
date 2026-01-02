@@ -1,7 +1,7 @@
 // ============================================================================
 // SWTOR MACRO AGENT - TYPE DEFINITIONS
 // ============================================================================
-// 22 Input Keys for gesture detection
+// 25 Input Keys for gesture detection
 export const INPUT_KEYS = [
     "W",
     "A",
@@ -9,11 +9,11 @@ export const INPUT_KEYS = [
     "D",
     "B",
     "I",
+    "Y",
+    "U",
     "T",
     "C",
     "H",
-    "Y",
-    "U",
     "P",
     "1",
     "2",
@@ -21,6 +21,9 @@ export const INPUT_KEYS = [
     "4",
     "5",
     "6",
+    "7",
+    "8",
+    "9",
     "LEFT_CLICK",
     "RIGHT_CLICK",
     "MIDDLE_CLICK",
@@ -67,9 +70,10 @@ export const OUTPUT_KEYS = [
     "NUMPAD_MULTIPLY",
     "NUMPAD_DECIMAL",
     "NUMPAD_SUBTRACT",
-    // Special Keys (2 keys)
+    // Special Keys (3 keys)
     "BACKSPACE",
     "END",
+    "ESCAPE",
 ];
 // 12 Gesture Types (expanded: single/double/triple/quadruple with long + super_long variants)
 export const GESTURE_TYPES = [

@@ -14,6 +14,8 @@ import {
   InputKey,
   GestureType,
   CompiledProfile,
+  OUTPUT_KEYS,
+  OutputKey,
 } from "./types.js";
 import { compileProfile } from "./profileCompiler.js";
 
@@ -70,7 +72,8 @@ export class ProfileLoader {
 
     // Check sequence
     if (!binding.sequence || binding.sequence.length === 0) {
-      errors.push(`Binding ${index} "${binding.name}": Empty sequence`);
+      // Empty sequences are allowed - macro may be a placeholder or disabled
+      warnings.push(`Binding ${index} "${binding.name}": Empty sequence`);
     } else {
       // Validate each step
       for (let i = 0; i < binding.sequence.length; i++) {
@@ -82,19 +85,68 @@ export class ProfileLoader {
           );
         }
 
-        if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
+        // Only validate minDelay/maxDelay if bufferTier is NOT provided
+        // (bufferTier takes precedence over legacy delay settings)
+        if (!step.bufferTier) {
+          if (
+            step.minDelay !== undefined &&
+            step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY
+          ) {
+            errors.push(
+              `Binding ${index} "${binding.name}" step ${i}: ` +
+                `minDelay ${step.minDelay}ms < ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms minimum`
+            );
+          }
+
+          if (step.minDelay !== undefined && step.maxDelay !== undefined) {
+            const variance = step.maxDelay - step.minDelay;
+            if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
+              errors.push(
+                `Binding ${index} "${binding.name}" step ${i}: ` +
+                  `variance ${variance}ms < ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms minimum`
+              );
+            }
+          }
+        }
+
+        // Validate dual key fields
+        if (step.dualKey !== undefined) {
+          // Check if dualKey is in OUTPUT_KEYS
+          if (!OUTPUT_KEYS.includes(step.dualKey as OutputKey)) {
+            errors.push(
+              `Binding ${index} "${binding.name}" step ${i}: ` +
+                `Invalid dualKey "${step.dualKey}" - must be a valid OUTPUT_KEY`
+            );
+          }
+
+          // Check if dualKey equals primary key
+          const primaryKeyNormalized = step.key.toUpperCase();
+          const dualKeyNormalized = step.dualKey.toUpperCase();
+          if (primaryKeyNormalized === dualKeyNormalized) {
+            errors.push(
+              `Binding ${index} "${binding.name}" step ${i}: ` +
+                `dualKey "${step.dualKey}" cannot be the same as primary key "${step.key}"`
+            );
+          }
+        }
+
+        // Validate dualKeyOffsetMs
+        if (step.dualKeyOffsetMs !== undefined && step.dualKeyOffsetMs < 1) {
           errors.push(
             `Binding ${index} "${binding.name}" step ${i}: ` +
-              `minDelay ${step.minDelay}ms < ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms minimum`
+              `dualKeyOffsetMs must be >= 1ms (got ${step.dualKeyOffsetMs}ms)`
           );
         }
 
-        const variance = step.maxDelay - step.minDelay;
-        if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
-          errors.push(
-            `Binding ${index} "${binding.name}" step ${i}: ` +
-              `variance ${variance}ms < ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms minimum`
-          );
+        // Validate dualKeyDownDuration if provided
+        if (step.dualKeyDownDuration !== undefined) {
+          const [dmin, dmax] = step.dualKeyDownDuration;
+          if (dmin <= 0 || dmax < dmin) {
+            errors.push(
+              `Binding ${index} "${binding.name}" step ${i}: ` +
+                `dualKeyDownDuration must be [min,max] with min>0 and max>=min`
+            );
+          }
         }
       }
 
@@ -188,6 +240,29 @@ export class ProfileLoader {
       // Apply default settings if missing
       if (!profile.gestureSettings) {
         profile.gestureSettings = DEFAULT_GESTURE_SETTINGS;
+      }
+
+      // Apply default buffer tier based on ability name (A-K = low, L-Z = medium)
+      for (const binding of profile.macros) {
+        // Extract first letter of ability name
+        const firstLetter = binding.name.charAt(0).toUpperCase();
+
+        // Determine default tier for this ability
+        let defaultTier: "low" | "medium" | undefined;
+        if (firstLetter >= "A" && firstLetter <= "K") {
+          defaultTier = "low";
+        } else if (firstLetter >= "L" && firstLetter <= "Z") {
+          defaultTier = "medium";
+        }
+
+        // Apply default tier to steps that don't have explicit bufferTier
+        if (defaultTier) {
+          for (const step of binding.sequence) {
+            if (step.bufferTier === undefined) {
+              step.bufferTier = defaultTier;
+            }
+          }
+        }
       }
 
       // Validate

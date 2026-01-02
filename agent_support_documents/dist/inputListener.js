@@ -101,23 +101,19 @@ export class GlobalInputListener {
         if (this.isListening)
             return;
         try {
-            // Dynamic import of node-global-key-listener
+            // Dynamic import of node-global-key-listener (optional dependency)
             const { GlobalKeyboardListener } = await import("node-global-key-listener");
             this.listener = new GlobalKeyboardListener();
             this.listener.addListener((e, down) => {
-                // Map the key name
+                // Early exit filter: check if event name is in INPUT_KEYS (saves 80% of processing)
                 const keyName = KEY_NAME_MAP[e.name] || e.name;
-                // Only process keys we care about (22 input keys)
-                if (!INPUT_KEYS.includes(keyName)) {
-                    // Check if it's a key we recognize
-                    const upperName = keyName.toUpperCase();
-                    if (!INPUT_KEYS.includes(upperName)) {
-                        return; // Ignore keys we don't track
-                    }
+                const upperName = keyName.toUpperCase();
+                if (!INPUT_KEYS.includes(upperName)) {
+                    return; // Ignore keys we don't track
                 }
                 const eventType = e.state === "DOWN" ? "down" : "up";
                 this.callback({
-                    key: keyName.toUpperCase(),
+                    key: upperName,
                     type: eventType,
                     timestamp: Date.now(),
                 });

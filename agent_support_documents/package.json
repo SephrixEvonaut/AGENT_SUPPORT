@@ -11,7 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "robotjs": "^0.6.0"
+    "robotjs": "^0.6.0",
+    "say": "^0.16.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

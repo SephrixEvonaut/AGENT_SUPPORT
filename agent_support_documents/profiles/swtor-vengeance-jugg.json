@@ -1,0 +1,2245 @@
+{
+  "name": "SWTOR Vengeance Juggernaut - Full Rotation",
+  "description": "Complete keybind profile with focus modifier, targeting, conundrum-optimized assignment, Endure Pain, Enraged Defense, Discord controls, and extended timer system",
+  "gestureSettings": {
+    "multiPressWindow": 80,
+    "debounceDelay": 10,
+    "longPressMin": 80,
+    "longPressMax": 145,
+    "superLongMin": 146,
+    "superLongMax": 265,
+    "cancelThreshold": 266
+  },
+  "macros": [
+    {
+      "name": "Forward Movement",
+      "trigger": {
+        "key": "W",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD8",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Backward Movement",
+      "trigger": {
+        "key": "S",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD5",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Left Strafe",
+      "trigger": {
+        "key": "A",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD4",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Right Strafe",
+      "trigger": {
+        "key": "D",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD6",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Retaliation + Crushing Blow",
+      "trigger": {
+        "key": "6",
+        "gesture": "single_super_long"
+      },
+      "sequence": [
+        {
+          "key": "R",
+          "bufferTier": "low"
+        },
+        {
+          "key": "N",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Jump",
+      "trigger": {
+        "key": "SCROLL_UP",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD0",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Guard Swap (with Shield Icon)",
+      "trigger": {
+        "key": "2",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "L",
+          "dualKey": "NUMPAD_MULTIPLY",
+          "dualKeyOffsetMs": 6,
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Interrupt",
+      "trigger": {
+        "key": "4",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "K",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Focus Target's Target of Target",
+      "trigger": {
+        "key": "4",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "J",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Target of Target",
+      "trigger": {
+        "key": "5",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "M",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Crushing Blow",
+      "trigger": {
+        "key": "6",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "N",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Force Scream",
+      "trigger": {
+        "key": "1",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "O",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Close Enemy (with Cog)",
+      "trigger": {
+        "key": "2",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "Q",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Next Enemy (with Cog)",
+      "trigger": {
+        "key": "3",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "V",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Set Focus Target (with Gun)",
+      "trigger": {
+        "key": "4",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "X",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_ADD",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Aegis Assault",
+      "trigger": {
+        "key": "3",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "Z",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Saber Ward",
+      "trigger": {
+        "key": "6",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": ",",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Next Friend (with Cog)",
+      "trigger": {
+        "key": "1",
+        "gesture": "triple"
+      },
+      "sequence": [
+        {
+          "key": ".",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Close Friend (with Cog)",
+      "trigger": {
+        "key": "2",
+        "gesture": "triple"
+      },
+      "sequence": [
+        {
+          "key": "'",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Intercede",
+      "trigger": {
+        "key": "4",
+        "gesture": "single_super_long"
+      },
+      "sequence": [
+        {
+          "key": ";",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Smash",
+      "trigger": {
+        "key": "2",
+        "gesture": "double_long"
+      },
+      "sequence": [
+        {
+          "key": "]",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Vicious Throw",
+      "trigger": {
+        "key": "5",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "[",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Single Target Taunt",
+      "trigger": {
+        "key": "6",
+        "gesture": "triple"
+      },
+      "sequence": [
+        {
+          "key": "F6",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Close Enemy + Crushing Blow + Retaliation + Previous Enemy",
+      "trigger": {
+        "key": "1",
+        "gesture": "quadruple"
+      },
+      "sequence": [
+        {
+          "key": "Q",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "N",
+          "bufferTier": "low"
+        },
+        {
+          "key": "R",
+          "bufferTier": "low"
+        },
+        {
+          "key": "SHIFT+N",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Enrage",
+      "trigger": {
+        "key": "2",
+        "gesture": "quadruple"
+      },
+      "sequence": [
+        {
+          "key": "F8",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Leap",
+      "trigger": {
+        "key": "3",
+        "gesture": "quadruple"
+      },
+      "sequence": [
+        {
+          "key": "F9",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Vicious Slash",
+      "trigger": {
+        "key": "5",
+        "gesture": "single_super_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+L",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Ravage",
+      "trigger": {
+        "key": "6",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+K",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Sweeping Slash",
+      "trigger": {
+        "key": "6",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+J",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Saber Throw",
+      "trigger": {
+        "key": "5",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+M",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Previous Enemy (with Cog)",
+      "trigger": {
+        "key": "2",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+N",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Acquire Center Target (with Cog)",
+      "trigger": {
+        "key": "3",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+O",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Basic Attack",
+      "trigger": {
+        "key": "4",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+Q",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Stun Break",
+      "trigger": {
+        "key": "5",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+V",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Relic",
+      "trigger": {
+        "key": "6",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+X",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Force Choke",
+      "trigger": {
+        "key": "1",
+        "gesture": "single_super_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+Z",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Backhand",
+      "trigger": {
+        "key": "1",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+R",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Force Push",
+      "trigger": {
+        "key": "2",
+        "gesture": "single_super_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+L",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Electro Stun",
+      "trigger": {
+        "key": "2",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+K",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Seismic Grenade",
+      "trigger": {
+        "key": "3",
+        "gesture": "single_super_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+J",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Invincible",
+      "trigger": {
+        "key": "6",
+        "gesture": "double_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+M",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Adrenal",
+      "trigger": {
+        "key": "1",
+        "gesture": "triple_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+N",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Med Pack",
+      "trigger": {
+        "key": "2",
+        "gesture": "triple_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+O",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Awe/Reflect/Mad Dash",
+      "trigger": {
+        "key": "3",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+Q",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Max Zoom Out",
+      "trigger": {
+        "key": "4",
+        "gesture": "triple_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+V",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Max Zoom In",
+      "trigger": {
+        "key": "5",
+        "gesture": "triple_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+X",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Previous Friend (with Cog)",
+      "trigger": {
+        "key": "6",
+        "gesture": "triple_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+Z",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Close Enemy + Crushing Blow + Retaliation + Previous Enemy",
+      "trigger": {
+        "key": "1",
+        "gesture": "quadruple_long"
+      },
+      "sequence": [
+        {
+          "key": "Q",
+          "bufferTier": "low"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "N",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "R",
+          "bufferTier": "low"
+        },
+        {
+          "key": "SHIFT+N",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Group Member 2 (with Cog)",
+      "trigger": {
+        "key": "2",
+        "gesture": "quadruple_long"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD2",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Group Member 3 (with Cog)",
+      "trigger": {
+        "key": "3",
+        "gesture": "quadruple_long"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD3",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Group Member 4 (with Cog)",
+      "trigger": {
+        "key": "4",
+        "gesture": "quadruple_long"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD7",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Target Self (with Cog)",
+      "trigger": {
+        "key": "5",
+        "gesture": "quadruple_long"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD9",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "OOC Heal",
+      "trigger": {
+        "key": "6",
+        "gesture": "quadruple_long"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD_DECIMAL",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "RP Walk Toggle",
+      "trigger": {
+        "key": "B",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "BACKSPACE",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Mute SWTOR",
+      "trigger": {
+        "key": "B",
+        "gesture": "double_long"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Focus Target Crushing Blow",
+      "trigger": {
+        "key": "I",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+R",
+          "dualKey": "N",
+          "dualKeyOffsetMs": 6,
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Focus Target Force Scream",
+      "trigger": {
+        "key": "I",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+R",
+          "dualKey": "O",
+          "dualKeyOffsetMs": 6,
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Focus Target Vicious Throw",
+      "trigger": {
+        "key": "I",
+        "gesture": "triple"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+R",
+          "dualKey": "[",
+          "dualKeyOffsetMs": 6,
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Focus Target Interrupt",
+      "trigger": {
+        "key": "I",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+R",
+          "dualKey": "K",
+          "dualKeyOffsetMs": 6,
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Focus Target Single Taunt",
+      "trigger": {
+        "key": "I",
+        "gesture": "double_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+R",
+          "dualKey": "F6",
+          "dualKeyOffsetMs": 6,
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Timer: Drop (16s) - TTS: 'drop inc'",
+      "trigger": {
+        "key": "T",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Timer placeholder - implement TTS: 'drop inc' after 16 seconds",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Timer: Burst (13s) - TTS: 'burst'",
+      "trigger": {
+        "key": "C",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Timer placeholder - implement TTS: 'burst' after 13 seconds",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Timer: Laze (31s) - TTS: 'laze'",
+      "trigger": {
+        "key": "H",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Timer placeholder - implement TTS: 'laze' after 31 seconds",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Timer: Yield (45s) - TTS: 'yield'",
+      "trigger": {
+        "key": "Y",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Timer placeholder - implement TTS: 'yield' after 45 seconds",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Timer: Fuel (103s) - TTS: 'fuel'",
+      "trigger": {
+        "key": "U",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Timer placeholder - implement TTS: 'fuel' after 1 minute 43 seconds",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Timer: Burst (13s) - TTS: 'burst'",
+      "trigger": {
+        "key": "P",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Timer placeholder - implement TTS: 'burst' after 13 seconds",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Endure Pain + Timer: Drop (16s)",
+      "trigger": {
+        "key": "3",
+        "gesture": "triple"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+,",
+          "bufferTier": "low"
+        },
+        {
+          "key": "END",
+          "name": "Timer placeholder - implement TTS: 'drop inc' after 16 seconds",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Enraged Defense + Single Target Taunt",
+      "trigger": {
+        "key": "Y",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+.",
+          "bufferTier": "low"
+        },
+        {
+          "key": "F6",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Single Target Taunt + Crushing Blow",
+      "trigger": {
+        "key": "1",
+        "gesture": "double_long"
+      },
+      "sequence": [
+        {
+          "key": "F6",
+          "bufferTier": "low"
+        },
+        {
+          "key": "N",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Close Enemy + Crushing Blow",
+      "trigger": {
+        "key": "1",
+        "gesture": "double_super_long"
+      },
+      "sequence": [
+        {
+          "key": "Q",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "N",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Crushing Blow",
+      "trigger": {
+        "key": "1",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "N",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Retaliation + Aegis Assault",
+      "trigger": {
+        "key": "3",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "R",
+          "bufferTier": "low"
+        },
+        {
+          "key": "Z",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Single Target Taunt + Aegis Assault",
+      "trigger": {
+        "key": "3",
+        "gesture": "double_long"
+      },
+      "sequence": [
+        {
+          "key": "F6",
+          "bufferTier": "low"
+        },
+        {
+          "key": "Z",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Close Enemy + Aegis Assault",
+      "trigger": {
+        "key": "3",
+        "gesture": "double_super_long"
+      },
+      "sequence": [
+        {
+          "key": "Q",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "Z",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Next Enemy + Interrupt",
+      "trigger": {
+        "key": "4",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "V",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "K",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Target of Target + Guard Swap",
+      "trigger": {
+        "key": "4",
+        "gesture": "double_long"
+      },
+      "sequence": [
+        {
+          "key": "M",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "L",
+          "dualKey": "NUMPAD_MULTIPLY",
+          "dualKeyOffsetMs": 6,
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Target of Target + Intercede",
+      "trigger": {
+        "key": "4",
+        "gesture": "double_super_long"
+      },
+      "sequence": [
+        {
+          "key": "M",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": ";",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Next Enemy + Interrupt + Previous Enemy",
+      "trigger": {
+        "key": "4",
+        "gesture": "triple"
+      },
+      "sequence": [
+        {
+          "key": "V",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "K",
+          "bufferTier": "low"
+        },
+        {
+          "key": "SHIFT+N",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Target of Target + Guard Swap + Previous Enemy",
+      "trigger": {
+        "key": "4",
+        "gesture": "triple_long"
+      },
+      "sequence": [
+        {
+          "key": "M",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "L",
+          "dualKey": "NUMPAD_MULTIPLY",
+          "dualKeyOffsetMs": 6,
+          "bufferTier": "low"
+        },
+        {
+          "key": "SHIFT+N",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Target of Target + Intercede + Previous Enemy",
+      "trigger": {
+        "key": "4",
+        "gesture": "triple_super_long"
+      },
+      "sequence": [
+        {
+          "key": "M",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": ";",
+          "bufferTier": "low"
+        },
+        {
+          "key": "SHIFT+N",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Next Enemy + Interrupt",
+      "trigger": {
+        "key": "5",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "V",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "K",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Focus Target's Target of Target + Guard Swap",
+      "trigger": {
+        "key": "5",
+        "gesture": "double_long"
+      },
+      "sequence": [
+        {
+          "key": "J",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "L",
+          "dualKey": "NUMPAD_MULTIPLY",
+          "dualKeyOffsetMs": 6,
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Focus Target's Target of Target + Intercede",
+      "trigger": {
+        "key": "5",
+        "gesture": "double_super_long"
+      },
+      "sequence": [
+        {
+          "key": "J",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": ";",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Acquire Center Target + Interrupt + Previous Enemy",
+      "trigger": {
+        "key": "5",
+        "gesture": "triple"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+O",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "K",
+          "bufferTier": "low"
+        },
+        {
+          "key": "SHIFT+N",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Focus Target's Target of Target + Guard Swap + Previous Enemy",
+      "trigger": {
+        "key": "5",
+        "gesture": "triple_long"
+      },
+      "sequence": [
+        {
+          "key": "J",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "L",
+          "dualKey": "NUMPAD_MULTIPLY",
+          "dualKeyOffsetMs": 6,
+          "bufferTier": "low"
+        },
+        {
+          "key": "SHIFT+N",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Focus Target's Target of Target + Intercede + Previous Enemy",
+      "trigger": {
+        "key": "5",
+        "gesture": "triple_super_long"
+      },
+      "sequence": [
+        {
+          "key": "J",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": ";",
+          "bufferTier": "low"
+        },
+        {
+          "key": "SHIFT+N",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Sweeping Slash + Single Target Taunt",
+      "trigger": {
+        "key": "6",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+J",
+          "bufferTier": "low"
+        },
+        {
+          "key": "F6",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Ravage + Single Target Taunt",
+      "trigger": {
+        "key": "6",
+        "gesture": "double_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+K",
+          "bufferTier": "low"
+        },
+        {
+          "key": "F6",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Basic Attack + Single Target Taunt",
+      "trigger": {
+        "key": "6",
+        "gesture": "double_super_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+Q",
+          "bufferTier": "low"
+        },
+        {
+          "key": "F6",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Sweeping Slash + Set Focus Target + Single Target Taunt",
+      "trigger": {
+        "key": "6",
+        "gesture": "triple"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+J",
+          "bufferTier": "low"
+        },
+        {
+          "key": "X",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_ADD",
+          "bufferTier": "low"
+        },
+        {
+          "key": "F6",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Ravage + Set Focus Target + Single Target Taunt",
+      "trigger": {
+        "key": "6",
+        "gesture": "triple_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+K",
+          "bufferTier": "low"
+        },
+        {
+          "key": "X",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_ADD",
+          "bufferTier": "low"
+        },
+        {
+          "key": "F6",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Basic Attack + Set Focus Target + Single Target Taunt",
+      "trigger": {
+        "key": "6",
+        "gesture": "triple_super_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+Q",
+          "bufferTier": "low"
+        },
+        {
+          "key": "X",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_ADD",
+          "bufferTier": "low"
+        },
+        {
+          "key": "F6",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Discord Volume: Low",
+      "trigger": {
+        "key": "7",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Discord Volume: Low",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Discord Volume: Medium",
+      "trigger": {
+        "key": "8",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Discord Volume: Medium",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Discord Volume: High + Deafen",
+      "trigger": {
+        "key": "9",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Discord Volume: High",
+          "bufferTier": "low"
+        },
+        {
+          "key": "CTRL+SHIFT+D",
+          "name": "Discord Deafen",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Discord Mic Toggle",
+      "trigger": {
+        "key": "7",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "CTRL+SHIFT+M",
+          "name": "Discord Mic Toggle",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Discord Deafen Toggle",
+      "trigger": {
+        "key": "8",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "CTRL+SHIFT+D",
+          "name": "Discord Deafen",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Jump",
+      "trigger": {
+        "key": "W",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD0",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Mad Dash",
+      "trigger": {
+        "key": "W",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+Q",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Jump + Acquire Center Target",
+      "trigger": {
+        "key": "W",
+        "gesture": "triple"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD0",
+          "bufferTier": "low"
+        },
+        {
+          "key": "SHIFT+O",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Jump + Acquire Center Target + Leap",
+      "trigger": {
+        "key": "W",
+        "gesture": "double_super_long"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD0",
+          "bufferTier": "low"
+        },
+        {
+          "key": "SHIFT+O",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "F9",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Leap Spam (4x)",
+      "trigger": {
+        "key": "W",
+        "gesture": "quadruple"
+      },
+      "sequence": [
+        {
+          "key": "F9",
+          "bufferTier": "low"
+        },
+        {
+          "key": "F9",
+          "bufferTier": "low"
+        },
+        {
+          "key": "F9",
+          "bufferTier": "low"
+        },
+        {
+          "key": "F9",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Jump + Acquire Center Target + Target of Target + Intercede",
+      "trigger": {
+        "key": "W",
+        "gesture": "quadruple_long"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD0",
+          "bufferTier": "low"
+        },
+        {
+          "key": "SHIFT+O",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "M",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": ";",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Jump + Acquire Center Target + Target of Target + Guard Swap",
+      "trigger": {
+        "key": "W",
+        "gesture": "quadruple_super_long"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD0",
+          "bufferTier": "low"
+        },
+        {
+          "key": "SHIFT+O",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "M",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        },
+        {
+          "key": "L",
+          "dualKey": "NUMPAD_MULTIPLY",
+          "dualKeyOffsetMs": 6,
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Leap",
+      "trigger": {
+        "key": "A",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "F9",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Single Target Taunt",
+      "trigger": {
+        "key": "A",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "F6",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Single Target Taunt (Check for Threatening Rage)",
+      "trigger": {
+        "key": "A",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "F6",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Group Member 1",
+      "trigger": {
+        "key": "S",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD1",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Group Member 2",
+      "trigger": {
+        "key": "S",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD2",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Group Member 3",
+      "trigger": {
+        "key": "S",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD3",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Target of Target",
+      "trigger": {
+        "key": "S",
+        "gesture": "triple"
+      },
+      "sequence": [
+        {
+          "key": "M",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_SUBTRACT",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Mass Taunt + Focus Modifier + Single Target Taunt + Enrage (1.2s delay)",
+      "trigger": {
+        "key": "S",
+        "gesture": "quadruple"
+      },
+      "sequence": [
+        {
+          "key": "F7",
+          "bufferTier": "low"
+        },
+        {
+          "key": "X",
+          "bufferTier": "medium"
+        },
+        {
+          "key": "NUMPAD_ADD",
+          "bufferTier": "low"
+        },
+        {
+          "key": "F6",
+          "bufferTier": "high"
+        },
+        {
+          "key": "F8",
+          "minDelay": 1200,
+          "maxDelay": 1210
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Escape Key",
+      "trigger": {
+        "key": "D",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "ESCAPE",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Timer: Burst (13s) - TTS: 'burst'",
+      "trigger": {
+        "key": "D",
+        "gesture": "single_super_long"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Timer placeholder - implement TTS: 'burst' after 13 seconds",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Saber Ward",
+      "trigger": {
+        "key": "Y",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": ",",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Invincible",
+      "trigger": {
+        "key": "Y",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+M",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Med Pack",
+      "trigger": {
+        "key": "U",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "ALT+O",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Adrenal",
+      "trigger": {
+        "key": "U",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "ALT+N",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Relic",
+      "trigger": {
+        "key": "U",
+        "gesture": "single_super_long"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+X",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Endure Pain + Med Pack",
+      "trigger": {
+        "key": "U",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "SHIFT+,",
+          "bufferTier": "low"
+        },
+        {
+          "key": "ALT+O",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Timer: Yield (45s) - TTS: 'yield'",
+      "trigger": {
+        "key": "P",
+        "gesture": "single_long"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Timer placeholder - implement TTS: 'yield' after 45 seconds",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Timer: Fuel (103s) - TTS: 'fuel'",
+      "trigger": {
+        "key": "P",
+        "gesture": "single_super_long"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Timer placeholder - implement TTS: 'fuel' after 1 minute 43 seconds",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Timer: Laze (31s) - TTS: 'laze'",
+      "trigger": {
+        "key": "P",
+        "gesture": "double"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "name": "Timer placeholder - implement TTS: 'laze' after 31 seconds",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Out of Combat Heal",
+      "trigger": {
+        "key": "B",
+        "gesture": "single"
+      },
+      "sequence": [
+        {
+          "key": "NUMPAD_DECIMAL",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Mute SWTOR",
+      "trigger": {
+        "key": "B",
+        "gesture": "single_super_long"
+      },
+      "sequence": [
+        {
+          "key": "END",
+          "bufferTier": "low"
+        }
+      ],
+      "enabled": true
+    }
+  ]
+}

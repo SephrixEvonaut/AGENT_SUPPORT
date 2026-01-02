@@ -18,7 +18,7 @@
  * 3. Input sent through this context appears to come from hardware
  * 4. No software injection flags are set
  */
-import { SequenceStep } from './types.js';
+import { SequenceStep } from "./types.js";
 export declare class InterceptionExecutor {
     private context;
     private keyboardDevice;

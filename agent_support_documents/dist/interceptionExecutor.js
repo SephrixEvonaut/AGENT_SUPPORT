@@ -18,53 +18,108 @@
  * 3. Input sent through this context appears to come from hardware
  * 4. No software injection flags are set
  */
-import { SEQUENCE_CONSTRAINTS } from './types.js';
-import { logger } from './logger.js';
+import { SEQUENCE_CONSTRAINTS } from "./types.js";
+import { logger } from "./logger.js";
 const SCAN_CODES = {
     // Number row
-    '1': { code: 0x02 }, '2': { code: 0x03 }, '3': { code: 0x04 }, '4': { code: 0x05 }, '5': { code: 0x06 },
-    '6': { code: 0x07 }, '7': { code: 0x08 }, '8': { code: 0x09 }, '9': { code: 0x0A }, '0': { code: 0x0B },
+    "1": { code: 0x02 },
+    "2": { code: 0x03 },
+    "3": { code: 0x04 },
+    "4": { code: 0x05 },
+    "5": { code: 0x06 },
+    "6": { code: 0x07 },
+    "7": { code: 0x08 },
+    "8": { code: 0x09 },
+    "9": { code: 0x0a },
+    "0": { code: 0x0b },
     // QWERTY row
-    'q': { code: 0x10 }, 'w': { code: 0x11 }, 'e': { code: 0x12 }, 'r': { code: 0x13 }, 't': { code: 0x14 },
-    'y': { code: 0x15 }, 'u': { code: 0x16 }, 'i': { code: 0x17 }, 'o': { code: 0x18 }, 'p': { code: 0x19 },
+    q: { code: 0x10 },
+    w: { code: 0x11 },
+    e: { code: 0x12 },
+    r: { code: 0x13 },
+    t: { code: 0x14 },
+    y: { code: 0x15 },
+    u: { code: 0x16 },
+    i: { code: 0x17 },
+    o: { code: 0x18 },
+    p: { code: 0x19 },
     // ASDF row
-    'a': { code: 0x1E }, 's': { code: 0x1F }, 'd': { code: 0x20 }, 'f': { code: 0x21 }, 'g': { code: 0x22 },
-    'h': { code: 0x23 }, 'j': { code: 0x24 }, 'k': { code: 0x25 }, 'l': { code: 0x26 },
+    a: { code: 0x1e },
+    s: { code: 0x1f },
+    d: { code: 0x20 },
+    f: { code: 0x21 },
+    g: { code: 0x22 },
+    h: { code: 0x23 },
+    j: { code: 0x24 },
+    k: { code: 0x25 },
+    l: { code: 0x26 },
     // ZXCV row
-    'z': { code: 0x2C }, 'x': { code: 0x2D }, 'c': { code: 0x2E }, 'v': { code: 0x2F }, 'b': { code: 0x30 },
-    'n': { code: 0x31 }, 'm': { code: 0x32 },
+    z: { code: 0x2c },
+    x: { code: 0x2d },
+    c: { code: 0x2e },
+    v: { code: 0x2f },
+    b: { code: 0x30 },
+    n: { code: 0x31 },
+    m: { code: 0x32 },
     // Function keys
-    'f1': { code: 0x3B }, 'f2': { code: 0x3C }, 'f3': { code: 0x3D }, 'f4': { code: 0x3E },
-    'f5': { code: 0x3F }, 'f6': { code: 0x40 }, 'f7': { code: 0x41 }, 'f8': { code: 0x42 },
-    'f9': { code: 0x43 }, 'f10': { code: 0x44 }, 'f11': { code: 0x57 }, 'f12': { code: 0x58 },
+    f1: { code: 0x3b },
+    f2: { code: 0x3c },
+    f3: { code: 0x3d },
+    f4: { code: 0x3e },
+    f5: { code: 0x3f },
+    f6: { code: 0x40 },
+    f7: { code: 0x41 },
+    f8: { code: 0x42 },
+    f9: { code: 0x43 },
+    f10: { code: 0x44 },
+    f11: { code: 0x57 },
+    f12: { code: 0x58 },
     // Special keys
-    'space': { code: 0x39 }, 'enter': { code: 0x1C }, 'escape': { code: 0x01 },
-    'tab': { code: 0x0F }, 'backspace': { code: 0x0E },
+    space: { code: 0x39 },
+    enter: { code: 0x1c },
+    escape: { code: 0x01 },
+    tab: { code: 0x0f },
+    backspace: { code: 0x0e },
     // Numpad (NOT extended - these are the numpad keys)
-    'num0': { code: 0x52 }, 'num1': { code: 0x4F }, 'num2': { code: 0x50 }, 'num3': { code: 0x51 },
-    'num4': { code: 0x4B }, 'num5': { code: 0x4C }, 'num6': { code: 0x4D },
-    'num7': { code: 0x47 }, 'num8': { code: 0x48 }, 'num9': { code: 0x49 },
-    'numplus': { code: 0x4E }, 'numminus': { code: 0x4A },
-    'nummultiply': { code: 0x37 }, 'numdivide': { code: 0x35, isExtended: true },
-    'numenter': { code: 0x1C, isExtended: true },
+    num0: { code: 0x52 },
+    num1: { code: 0x4f },
+    num2: { code: 0x50 },
+    num3: { code: 0x51 },
+    num4: { code: 0x4b },
+    num5: { code: 0x4c },
+    num6: { code: 0x4d },
+    num7: { code: 0x47 },
+    num8: { code: 0x48 },
+    num9: { code: 0x49 },
+    numplus: { code: 0x4e },
+    numminus: { code: 0x4a },
+    nummultiply: { code: 0x37 },
+    numdivide: { code: 0x35, isExtended: true },
+    numenter: { code: 0x1c, isExtended: true },
     // Arrow keys (EXTENDED - require E0 flag to distinguish from numpad)
-    'up': { code: 0x48, isExtended: true },
-    'down': { code: 0x50, isExtended: true },
-    'left': { code: 0x4B, isExtended: true },
-    'right': { code: 0x4D, isExtended: true },
+    up: { code: 0x48, isExtended: true },
+    down: { code: 0x50, isExtended: true },
+    left: { code: 0x4b, isExtended: true },
+    right: { code: 0x4d, isExtended: true },
     // Navigation keys (EXTENDED)
-    'insert': { code: 0x52, isExtended: true },
-    'delete': { code: 0x53, isExtended: true },
-    'home': { code: 0x47, isExtended: true },
-    'end': { code: 0x4F, isExtended: true },
-    'pageup': { code: 0x49, isExtended: true },
-    'pagedown': { code: 0x51, isExtended: true },
+    insert: { code: 0x52, isExtended: true },
+    delete: { code: 0x53, isExtended: true },
+    home: { code: 0x47, isExtended: true },
+    end: { code: 0x4f, isExtended: true },
+    pageup: { code: 0x49, isExtended: true },
+    pagedown: { code: 0x51, isExtended: true },
     // Other
-    'minus': { code: 0x0C }, 'equals': { code: 0x0D },
-    'leftbracket': { code: 0x1A }, 'rightbracket': { code: 0x1B },
-    'semicolon': { code: 0x27 }, 'quote': { code: 0x28 },
-    'comma': { code: 0x33 }, 'period': { code: 0x34 }, 'slash': { code: 0x35 },
-    'backslash': { code: 0x2B }, 'grave': { code: 0x29 },
+    minus: { code: 0x0c },
+    equals: { code: 0x0d },
+    leftbracket: { code: 0x1a },
+    rightbracket: { code: 0x1b },
+    semicolon: { code: 0x27 },
+    quote: { code: 0x28 },
+    comma: { code: 0x33 },
+    period: { code: 0x34 },
+    slash: { code: 0x35 },
+    backslash: { code: 0x2b },
+    grave: { code: 0x29 },
 };
 // Key states for Interception
 const KEY_DOWN = 0x00;
@@ -76,7 +131,7 @@ export class InterceptionExecutor {
     ffi = null;
     initialized = false;
     dllPath;
-    constructor(dllPath = 'C:\\Program Files\\Interception\\library\\x64\\interception.dll') {
+    constructor(dllPath = "C:\\Program Files\\Interception\\library\\x64\\interception.dll") {
         this.dllPath = dllPath;
     }
     /**
@@ -87,24 +142,27 @@ export class InterceptionExecutor {
             // Dynamic import of ffi-napi (Windows only, native module)
             // These packages must be installed separately: npm install ffi-napi ref-napi
             // @ts-ignore - dynamic import, only works on Windows with native modules
-            const ffi = await import('ffi-napi');
+            const ffi = await import("ffi-napi");
             // @ts-ignore - dynamic import
-            const ref = await import('ref-napi');
+            const ref = await import("ref-napi");
             // Define the Interception library interface
             this.ffi = ffi.Library(this.dllPath, {
-                'interception_create_context': ['pointer', []],
-                'interception_destroy_context': ['void', ['pointer']],
-                'interception_get_hardware_id': ['int', ['pointer', 'int', 'pointer', 'int']],
-                'interception_send': ['int', ['pointer', 'int', 'pointer', 'int']],
-                'interception_wait': ['int', ['pointer']],
-                'interception_receive': ['int', ['pointer', 'int', 'pointer', 'int']],
-                'interception_is_keyboard': ['bool', ['int']],
-                'interception_is_mouse': ['bool', ['int']],
+                interception_create_context: ["pointer", []],
+                interception_destroy_context: ["void", ["pointer"]],
+                interception_get_hardware_id: [
+                    "int",
+                    ["pointer", "int", "pointer", "int"],
+                ],
+                interception_send: ["int", ["pointer", "int", "pointer", "int"]],
+                interception_wait: ["int", ["pointer"]],
+                interception_receive: ["int", ["pointer", "int", "pointer", "int"]],
+                interception_is_keyboard: ["bool", ["int"]],
+                interception_is_mouse: ["bool", ["int"]],
             });
             // Create context
             this.context = this.ffi.interception_create_context();
             if (!this.context) {
-                console.error('[InterceptionExecutor] Failed to create context - is driver installed?');
+                console.error("[InterceptionExecutor] Failed to create context - is driver installed?");
                 return false;
             }
             // Find first keyboard device (devices 1-10 are keyboards)
@@ -116,15 +174,15 @@ export class InterceptionExecutor {
                 }
             }
             this.initialized = true;
-            logger.debug('Initialized successfully (kernel-level injection ready)');
+            logger.debug("Initialized successfully (kernel-level injection ready)");
             return true;
         }
         catch (error) {
-            logger.error('Failed to initialize:', error.message);
-            logger.error('Make sure:');
-            logger.error('  1. Interception driver is installed');
-            logger.error('  2. ffi-napi and ref-napi are installed: npm install ffi-napi ref-napi');
-            logger.error('  3. Running on Windows with proper permissions');
+            logger.error("Failed to initialize:", error.message);
+            logger.error("Make sure:");
+            logger.error("  1. Interception driver is installed");
+            logger.error("  2. ffi-napi and ref-napi are installed: npm install ffi-napi ref-napi");
+            logger.error("  3. Running on Windows with proper permissions");
             return false;
         }
     }
@@ -136,7 +194,7 @@ export class InterceptionExecutor {
             this.ffi.interception_destroy_context(this.context);
             this.context = null;
             this.initialized = false;
-            logger.debug('Context destroyed');
+            logger.debug("Context destroyed");
         }
     }
     /**
@@ -157,7 +215,7 @@ export class InterceptionExecutor {
         const buffer = Buffer.alloc(8);
         buffer.writeUInt16LE(code, 0); // scan code
         // State: 0=down, 1=up, 2=E0 (extended), 3=E0+up
-        const fullState = isExtended ? (state | KEY_E0) : state;
+        const fullState = isExtended ? state | KEY_E0 : state;
         buffer.writeUInt16LE(fullState, 2);
         buffer.writeUInt32LE(0, 4); // information (unused)
         return buffer;
@@ -167,7 +225,7 @@ export class InterceptionExecutor {
      */
     sendKey(key) {
         if (!this.initialized || !this.ffi || !this.context) {
-            console.error('[InterceptionExecutor] Not initialized');
+            console.error("[InterceptionExecutor] Not initialized");
             return false;
         }
         const entry = this.getScanCodeEntry(key);
@@ -219,7 +277,7 @@ export class InterceptionExecutor {
     validateSequence(sequence) {
         const errors = [];
         // Check unique keys constraint
-        const uniqueKeys = new Set(sequence.map(s => s.key.toLowerCase()));
+        const uniqueKeys = new Set(sequence.map((s) => s.key.toLowerCase()));
         if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
             errors.push(`Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`);
         }
@@ -264,14 +322,14 @@ export class InterceptionExecutor {
      */
     async executeSequence(sequence) {
         if (!this.initialized) {
-            console.error('[InterceptionExecutor] Not initialized - call initialize() first');
+            console.error("[InterceptionExecutor] Not initialized - call initialize() first");
             return false;
         }
         // Validate before execution
         const validation = this.validateSequence(sequence);
         if (!validation.valid) {
-            console.error('[InterceptionExecutor] Sequence validation failed:');
-            validation.errors.forEach(e => console.error(`  - ${e}`));
+            console.error("[InterceptionExecutor] Sequence validation failed:");
+            validation.errors.forEach((e) => console.error(`  - ${e}`));
             return false;
         }
         logger.debug(`Executing ${sequence.length} steps (Interception/kernel mode)`);
@@ -296,7 +354,7 @@ export class InterceptionExecutor {
                 }
             }
         }
-        logger.debug('Sequence completed successfully');
+        logger.debug("Sequence completed successfully");
         return true;
     }
     /**
@@ -304,8 +362,8 @@ export class InterceptionExecutor {
      */
     static async isAvailable() {
         try {
-            const fs = await import('fs');
-            const defaultPath = 'C:\\Program Files\\Interception\\library\\x64\\interception.dll';
+            const fs = await import("fs");
+            const defaultPath = "C:\\Program Files\\Interception\\library\\x64\\interception.dll";
             return fs.existsSync(defaultPath);
         }
         catch {
@@ -320,18 +378,18 @@ export class InterceptionExecutor {
 export class MockInterceptionExecutor {
     initialized = false;
     async initialize() {
-        logger.info('Initialized in MOCK mode (no actual keypresses)');
-        logger.info('Install Interception driver for real kernel-level injection');
+        logger.info("Initialized in MOCK mode (no actual keypresses)");
+        logger.info("Install Interception driver for real kernel-level injection");
         this.initialized = true;
         return true;
     }
     destroy() {
         this.initialized = false;
-        logger.debug('Destroyed');
+        logger.debug("Destroyed");
     }
     validateSequence(sequence) {
         const errors = [];
-        const uniqueKeys = new Set(sequence.map(s => s.key.toLowerCase()));
+        const uniqueKeys = new Set(sequence.map((s) => s.key.toLowerCase()));
         if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
             errors.push(`Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`);
         }
@@ -368,7 +426,7 @@ export class MockInterceptionExecutor {
             return false;
         const validation = this.validateSequence(sequence);
         if (!validation.valid) {
-            logger.error('Validation failed:', validation.errors);
+            logger.error("Validation failed:", validation.errors);
             return false;
         }
         logger.debug(`Would execute ${sequence.length} steps:`);

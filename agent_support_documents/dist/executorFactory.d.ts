@@ -1,9 +1,9 @@
-import { MacroBinding } from './types.js';
-import { ExecutionCallback } from './sequenceExecutor.js';
+import { MacroBinding } from "./types.js";
+import { ExecutionCallback } from "./sequenceExecutor.js";
 /**
  * Available execution backends
  */
-export type ExecutorBackend = 'robotjs' | 'interception' | 'mock';
+export type ExecutorBackend = "robotjs" | "interception" | "mock";
 /**
  * Unified executor interface
  * Supports both awaitable and fire-and-forget execution for concurrent sequences

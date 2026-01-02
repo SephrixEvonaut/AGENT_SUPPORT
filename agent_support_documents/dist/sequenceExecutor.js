@@ -7,12 +7,16 @@
 // - Per-binding execution tracking (same binding won't overlap)
 // - Human-like timing with configurable randomization
 // - Non-blocking async execution
+// - Discord volume/mic control integration
+// - TTS timer system
 //
 // ============================================================================
 import robot from "robotjs";
 import { SEQUENCE_CONSTRAINTS, } from "./types.js";
 import { isConundrumKey } from "./profileCompiler.js";
 import { TrafficController } from "./trafficController.js";
+import { TimerManager } from "./timerManager.js";
+import { getDiscordController } from "./discordController.js";
 import { logger } from "./logger.js";
 export class SequenceExecutor {
     // Per-binding execution state - allows DIFFERENT bindings to run concurrently
@@ -23,10 +27,12 @@ export class SequenceExecutor {
     callback;
     compiledProfile = null;
     trafficController = null;
+    timerManager;
     constructor(callback, compiledProfile) {
         this.callback = callback || (() => { });
         if (compiledProfile)
             this.setCompiledProfile(compiledProfile);
+        this.timerManager = new TimerManager();
         // Configure robotjs for minimal internal delay
         robot.setKeyboardDelay(1);
         logger.debug("SequenceExecutor initialized");
@@ -266,8 +272,93 @@ export class SequenceExecutor {
                         logger.info(`"${name}" cancelled`);
                         return false;
                     }
-                    // Press the key (support modifiers and hold duration)
+                    // Press the key (support modifiers, hold duration, and dual keys)
                     const { key: parsedKey, modifiers } = this.parseKey(step.key);
+                    // DISCORD CONTROL DETECTION: Check if this is a Discord control step
+                    if (parsedKey === "end" && step.name?.includes("Discord")) {
+                        const discordController = getDiscordController();
+                        let handled = false;
+                        let skipKeyPress = false;
+                        // Volume control (OS-level)
+                        if (step.name.includes("Volume: Low")) {
+                            logger.info("Discord: Setting LOW volume (OS)");
+                            await discordController.setVolume("low");
+                            skipKeyPress = true;
+                            handled = true;
+                        }
+                        else if (step.name.includes("Volume: Medium")) {
+                            logger.info("Discord: Setting MEDIUM volume (OS)");
+                            await discordController.setVolume("medium");
+                            skipKeyPress = true;
+                            handled = true;
+                        }
+                        else if (step.name.includes("Volume: High")) {
+                            logger.info("Discord: Setting HIGH volume (OS)");
+                            await discordController.setVolume("high");
+                            skipKeyPress = true;
+                            handled = true;
+                        }
+                        // Mic toggle (Discord hotkey)
+                        else if (step.name.includes("Mic Toggle")) {
+                            logger.info("Discord: Mic toggle via hotkey (CTRL+SHIFT+M)");
+                            await discordController.pressDiscordMicToggle();
+                            // Will press the actual key below
+                            handled = true;
+                        }
+                        // Deafen toggle (Discord hotkey)
+                        else if (step.name.includes("Deafen")) {
+                            logger.info("Discord: Deafen toggle via hotkey (CTRL+SHIFT+D)");
+                            await discordController.pressDiscordDeafenToggle();
+                            // Will press the actual key below
+                            handled = true;
+                        }
+                        if (handled) {
+                            // Emit step event for monitoring
+                            this.callback({
+                                type: "step",
+                                bindingName: name,
+                                step,
+                                stepIndex: i,
+                                timestamp: Date.now(),
+                            });
+                            // Skip key execution for OS-level volume control only
+                            if (skipKeyPress) {
+                                // Skip key execution - Discord OS action executed instead
+                                continue;
+                            }
+                            // For hotkey-based commands, continue to execute the actual keypress below
+                        }
+                    }
+                    // TIMER DETECTION: Check if this is a timer step
+                    if (parsedKey === "end" && step.name?.includes("Timer placeholder")) {
+                        // Parse timer duration and message from step.name
+                        // Format: "Timer placeholder - implement TTS: 'message' after N seconds"
+                        const durationMatch = step.name.match(/(\d+)\s*seconds?/);
+                        const messageMatch = step.name.match(/[''](.*?)['']/);
+                        if (durationMatch && messageMatch) {
+                            const duration = parseInt(durationMatch[1], 10);
+                            const message = messageMatch[1];
+                            // Generate timer ID from binding name or use message as fallback
+                            const timerId = message.toLowerCase().replace(/\s+/g, "_");
+                            logger.debug(`Timer detected: ${timerId} (${duration}s) → "${message}"`);
+                            // Start timer instead of pressing END key
+                            this.timerManager.startTimer(timerId, duration, message);
+                            // Emit step event for monitoring
+                            this.callback({
+                                type: "step",
+                                bindingName: name,
+                                step,
+                                stepIndex: i,
+                                timestamp: Date.now(),
+                            });
+                            // Skip key execution - timer started instead
+                            continue;
+                        }
+                        else {
+                            logger.warn(`Timer step detected but couldn't parse: "${step.name}"`);
+                            // Fall through to normal key execution
+                        }
+                    }
                     // Traffic control for conundrum keys: wait if necessary
                     if (this.compiledProfile && this.trafficController) {
                         const needsTraffic = isConundrumKey(step.key, this.compiledProfile);
@@ -278,7 +369,18 @@ export class SequenceExecutor {
                     // Determine key down duration (default [15,27])
                     const kd = step.keyDownDuration || [15, 27];
                     const keyDownMs = this.getRandomDelay(kd[0], kd[1]);
-                    // Key down
+                    // Check for dual key configuration
+                    const hasDualKey = step.dualKey !== undefined;
+                    let dualParsedKey = null;
+                    let dualKeyDownMs = 0;
+                    if (hasDualKey) {
+                        // Parse dual key
+                        dualParsedKey = this.parseKey(step.dualKey);
+                        // Determine dual key hold duration (defaults to primary key duration)
+                        const dualKd = step.dualKeyDownDuration || kd;
+                        dualKeyDownMs = this.getRandomDelay(dualKd[0], dualKd[1]);
+                    }
+                    // PRIMARY KEY DOWN
                     try {
                         robot.keyToggle(parsedKey, "down", modifiers.length === 0 ? undefined : modifiers);
                     }
@@ -293,15 +395,59 @@ export class SequenceExecutor {
                         stepIndex: i,
                         timestamp: Date.now(),
                     });
-                    logger.debug(`[${i + 1}/${sequence.length}] Pressed "${step.key}" (hit ${hit + 1}/${echoHits}) held ${keyDownMs}ms`);
-                    // Hold duration
-                    await this.sleep(keyDownMs);
-                    // Key up
-                    try {
-                        robot.keyToggle(parsedKey, "up", modifiers.length === 0 ? undefined : modifiers);
+                    if (hasDualKey) {
+                        // DUAL KEY MODE: Press second key after offset
+                        const offsetMs = step.dualKeyOffsetMs ?? 6; // Default 6ms offset
+                        logger.debug(`[${i + 1}/${sequence.length}] Pressed "${step.key}" + "${step.dualKey}" (dual, hit ${hit + 1}/${echoHits}) primary=${keyDownMs}ms, dual=${dualKeyDownMs}ms, offset=${offsetMs}ms`);
+                        // Wait for offset before pressing dual key
+                        await this.sleep(offsetMs);
+                        // DUAL KEY DOWN
+                        try {
+                            robot.keyToggle(dualParsedKey.key, "down", dualParsedKey.modifiers.length === 0
+                                ? undefined
+                                : dualParsedKey.modifiers);
+                        }
+                        catch (err) {
+                            // Fallback to keyTap if keyToggle unsupported
+                            this.pressKey(step.dualKey);
+                        }
+                        // Hold primary key for remaining duration (already held for offsetMs)
+                        const primaryRemainingMs = Math.max(0, keyDownMs - offsetMs);
+                        await this.sleep(primaryRemainingMs);
+                        // PRIMARY KEY UP (releases first)
+                        try {
+                            robot.keyToggle(parsedKey, "up", modifiers.length === 0 ? undefined : modifiers);
+                        }
+                        catch (err) {
+                            // If keyToggle failed, nothing else to do
+                        }
+                        // Hold dual key for its full duration (or remaining if longer than primary)
+                        const dualRemainingMs = Math.max(0, dualKeyDownMs - (offsetMs + primaryRemainingMs));
+                        if (dualRemainingMs > 0) {
+                            await this.sleep(dualRemainingMs);
+                        }
+                        // DUAL KEY UP (releases second)
+                        try {
+                            robot.keyToggle(dualParsedKey.key, "up", dualParsedKey.modifiers.length === 0
+                                ? undefined
+                                : dualParsedKey.modifiers);
+                        }
+                        catch (err) {
+                            // If keyToggle failed, nothing else to do
+                        }
                     }
-                    catch (err) {
-                        // If keyToggle failed, nothing else to do
+                    else {
+                        // SINGLE KEY MODE: Normal behavior
+                        logger.debug(`[${i + 1}/${sequence.length}] Pressed "${step.key}" (hit ${hit + 1}/${echoHits}) held ${keyDownMs}ms`);
+                        // Hold duration
+                        await this.sleep(keyDownMs);
+                        // PRIMARY KEY UP
+                        try {
+                            robot.keyToggle(parsedKey, "up", modifiers.length === 0 ? undefined : modifiers);
+                        }
+                        catch (err) {
+                            // If keyToggle failed, nothing else to do
+                        }
                     }
                     // Release traffic control if it was acquired
                     if (this.compiledProfile && this.trafficController) {
@@ -396,5 +542,13 @@ export class SequenceExecutor {
             totalMaxTime += step.maxDelay * delayCount;
         }
         console.log(`   ⏱️  Total time: ${totalMinTime}-${totalMaxTime}ms\n`);
+    }
+    /**
+     * Shutdown executor and clean up resources
+     */
+    shutdown() {
+        logger.info("Shutting down SequenceExecutor...");
+        this.cancelAll();
+        this.timerManager.shutdown();
     }
 }

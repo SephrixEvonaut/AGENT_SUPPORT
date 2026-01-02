@@ -1,12 +1,4 @@
-/** Normalize a key string to its raw key (uppercase without modifiers)
- * Examples:
- *  - "SHIFT+Z" -> "Z"
- *  - "ALT+NUMPAD7" -> "NUMPAD7"
- */
-function rawKeyFrom(key) {
-    const parts = key.split("+").map((p) => p.trim());
-    return parts[parts.length - 1].toUpperCase();
-}
+import { extractRawKey } from "./utils.js";
 /**
  * Compile a MacroProfile into a CompiledProfile for O(1) runtime checks
  */
@@ -18,7 +10,7 @@ export function compileProfile(profile) {
         for (const step of macro.sequence) {
             const key = step.key;
             const parts = key.split("+").map((p) => p.trim());
-            const last = parts[parts.length - 1].toUpperCase();
+            const last = extractRawKey(key);
             // detect modifiers
             const hasShift = parts
                 .slice(0, -1)
@@ -49,6 +41,6 @@ export function compileProfile(profile) {
     return { conundrumKeys, safeKeys };
 }
 export function isConundrumKey(key, compiled) {
-    const raw = rawKeyFrom(key);
+    const raw = extractRawKey(key);
     return compiled.conundrumKeys.has(raw);
 }
