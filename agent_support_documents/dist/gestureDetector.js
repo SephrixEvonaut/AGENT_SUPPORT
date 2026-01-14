@@ -24,9 +24,12 @@ class KeyGestureStateMachine {
     gestureTimer = null;
     // Track if we've exceeded the press limit (ignore further presses until reset)
     pressLimitReached = false;
-    // Elongating window with dynamic timing: 80ms initial + 50ms per additional tap
+    // Elongating window with dynamic timing: multiPressWindow initial + 60ms per additional tap
     windowDeadline = null;
     waitingForRelease = false; // Must wait for final key release
+    // Track if the current keyDown occurred within the window (for long/super_long detection)
+    // This allows held keys to count toward the sequence even if released after window expires
+    keyDownWasWithinWindow = false;
     constructor(key, settings, emitFn) {
         this.key = key;
         this.settings = settings;
@@ -96,39 +99,49 @@ class KeyGestureStateMachine {
         gesture = mapGesture(capped, lastPress.pressType);
         this.emitGesture(gesture);
     }
+    // Window timing constants (TRIPLED from original for more forgiving detection)
+    static INITIAL_WINDOW = 240; // First keyDown to 2nd keyDown window - was 80
+    static EXTENSION_WINDOW = 150; // Each subsequent keyDown extension - was 50
     handleKeyDown() {
         // If we've already hit the press limit, ignore this press
         if (this.pressLimitReached) {
             return;
         }
         const now = performance.now();
+        // Determine if this keyDown is within the elongating window
+        // This is the critical check - we track it so that even if the key is held
+        // past the window deadline (for long/super_long), it still counts toward the sequence
+        const withinWindow = this.windowDeadline !== null && now <= this.windowDeadline;
+        if (withinWindow) {
+            // This keyDown is within the window - it will count toward the current sequence
+            this.keyDownWasWithinWindow = true;
+            // Clear any pending timer as we're continuing the sequence
+            if (this.gestureTimer) {
+                clearTimeout(this.gestureTimer);
+                this.gestureTimer = null;
+            }
+            // CRITICAL: Extend window from THIS keyDown time (not keyUp!)
+            // Per spec: Window = keyDownTime + EXTENSION_WINDOW for 2nd, 3rd, 4th press
+            this.windowDeadline = now + KeyGestureStateMachine.EXTENSION_WINDOW;
+        }
+        else {
+            // This keyDown is outside the window - it starts a new sequence
+            // But only clear history if we're not waiting for a 4th press release
+            if (!this.waitingForRelease) {
+                this.pressHistory.length = 0;
+                this.pressLimitReached = false;
+            }
+            this.keyDownWasWithinWindow = false; // First press of new sequence
+            // CRITICAL: Set initial window from THIS keyDown time
+            // Per spec: Window = keyDownTime + INITIAL_WINDOW for 1st press
+            this.windowDeadline = now + KeyGestureStateMachine.INITIAL_WINDOW;
+        }
         this.keyDownTime = now;
-        // Dynamic elongating window:
-        // - Press 1: 80ms window
-        // - Press 2: adds 50ms → 130ms total window from press 2
-        // - Press 3: adds 50ms → 180ms total window from press 3
-        // - Press 4: no extension, resolve immediately on release
-        if (this.pressHistory.length === 0) {
-            // First press: 80ms window
-            this.windowDeadline = now + 80;
-        }
-        else if (this.pressHistory.length === 1) {
-            // Second press: add 50ms
-            this.windowDeadline = now + 50;
-        }
-        else if (this.pressHistory.length === 2) {
-            // Third press: add 50ms
-            this.windowDeadline = now + 50;
-        }
-        else if (this.pressHistory.length === 3) {
-            // Fourth press: will resolve immediately on release (no window extension)
+        // Handle 4th press special case - will resolve immediately on release
+        if (this.pressHistory.length === 3 &&
+            (withinWindow || this.waitingForRelease)) {
             this.windowDeadline = null;
             this.waitingForRelease = true;
-        }
-        // Clear any pending gesture resolution timer (we will re-schedule on keyUp)
-        if (this.gestureTimer) {
-            clearTimeout(this.gestureTimer);
-            this.gestureTimer = null;
         }
     }
     handleKeyUp() {
@@ -136,6 +149,7 @@ class KeyGestureStateMachine {
             return;
         const now = performance.now();
         const holdDuration = now - this.keyDownTime;
+        const keyDownTime = this.keyDownTime; // Save before clearing
         this.keyDownTime = null;
         // If press limit already reached, ignore this key up
         if (this.pressLimitReached) {
@@ -144,6 +158,10 @@ class KeyGestureStateMachine {
         // If hold exceeded cancel threshold, nullify only this key's recording (do not emit)
         if (holdDuration >= this.settings.cancelThreshold) {
             // Do not add to pressHistory; this press is ignored.
+            // Reset state for next gesture
+            this.pressHistory.length = 0;
+            this.windowDeadline = null;
+            this.waitingForRelease = false;
             return;
         }
         // Determine press type for this tap based on holdDuration
@@ -156,21 +174,25 @@ class KeyGestureStateMachine {
             holdDuration <= this.settings.superLongMax) {
             pressType = "super_long";
         }
-        // Check if this press is within the elongating window
-        const isWithinWindow = this.windowDeadline !== null && now <= this.windowDeadline;
-        if (!isWithinWindow && !this.waitingForRelease) {
-            // Start fresh press sequence (reuse array)
+        // Determine if this press counts toward the current sequence
+        // Key insight: Check if keyDOWN was within window, not keyUP
+        // This allows long/super_long presses that extend past the window to still count
+        const countsTowardSequence = this.pressHistory.length === 0 || // First press always counts
+            this.keyDownWasWithinWindow || // KeyDown was within window
+            this.waitingForRelease; // Waiting for 4th press
+        if (!countsTowardSequence) {
+            // KeyDown was after window expired - start fresh sequence
             this.pressHistory.length = 0;
             this.pressLimitReached = false;
-            this.windowDeadline = null;
+            this.waitingForRelease = false;
         }
         // Record this press (normal/long/super_long)
         this.pressHistory.push({ timestamp: now, pressType });
         // If we've reached the max press count (4th press), resolve immediately after release
-        // This allows us to classify the final press as normal/long/super_long
         if (this.pressHistory.length >= MAX_PRESS_COUNT) {
             this.pressLimitReached = true;
             this.waitingForRelease = false;
+            this.windowDeadline = null;
             // Clear any pending timers
             if (this.gestureTimer) {
                 clearTimeout(this.gestureTimer);
@@ -180,7 +202,9 @@ class KeyGestureStateMachine {
             this.resolveGesture();
             return;
         }
-        // Gesture finalization is now handled by interval checker in parent GestureDetector
+        // Window is already set in handleKeyDown() based on keyDown time
+        // per the spec: window starts from keyDown, not keyUp
+        // Gesture finalization is handled by interval checker in parent GestureDetector
         // No need to schedule individual setTimeout per key
     }
     reset() {
@@ -190,6 +214,7 @@ class KeyGestureStateMachine {
         this.pressLimitReached = false;
         this.windowDeadline = null;
         this.waitingForRelease = false;
+        this.keyDownWasWithinWindow = false;
     }
     /**
      * Check if this key has a pending gesture that should be finalized

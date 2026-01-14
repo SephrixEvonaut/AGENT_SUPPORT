@@ -6,11 +6,47 @@ export class TrafficController {
   private queue: Array<{ key: string; timestamp: number }> = [];
   private compiledProfile: CompiledProfile;
 
+  // Macros with supremacy bypass traffic control entirely
+  private supremacyMacros: Set<string> = new Set();
+
   constructor(compiledProfile: CompiledProfile) {
     this.compiledProfile = compiledProfile;
   }
 
-  async requestCrossing(key: string): Promise<void> {
+  /**
+   * Grant supremacy to a macro - it will bypass traffic control entirely
+   */
+  grantSupremacy(macroName: string): void {
+    this.supremacyMacros.add(macroName);
+  }
+
+  /**
+   * Revoke supremacy from a macro
+   */
+  revokeSupremacy(macroName: string): void {
+    this.supremacyMacros.delete(macroName);
+  }
+
+  /**
+   * Check if a macro has supremacy
+   */
+  hasSupremacy(macroName: string): boolean {
+    return this.supremacyMacros.has(macroName);
+  }
+
+  /**
+   * Get all macros with supremacy
+   */
+  getSupremacyList(): string[] {
+    return [...this.supremacyMacros];
+  }
+
+  async requestCrossing(key: string, macroName?: string): Promise<void> {
+    // Supremacy macros bypass traffic control
+    if (macroName && this.supremacyMacros.has(macroName)) {
+      return;
+    }
+
     const raw = extractRawKey(key);
     const isConundrum = this.compiledProfile.conundrumKeys.has(raw);
 
@@ -21,7 +57,7 @@ export class TrafficController {
     this.queue.push({ key: raw, timestamp: Date.now() });
 
     while (this.shouldWait(raw)) {
-      await sleep(randomRange(29, 36));
+      await sleep(randomRange(10, 30));
     }
 
     this.crossingKey = raw;

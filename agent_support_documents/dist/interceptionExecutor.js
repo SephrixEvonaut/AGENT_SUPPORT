@@ -281,7 +281,7 @@ export class InterceptionExecutor {
         if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
             errors.push(`Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`);
         }
-        // Count STEPS per key (not total presses - echoHits don't count toward step limit)
+        // Count STEPS per key
         const keyStepCount = new Map();
         // Check each step
         for (const step of sequence) {
@@ -294,12 +294,7 @@ export class InterceptionExecutor {
             if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
                 errors.push(`Step ${step.key}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`);
             }
-            // Echo hits check (per-step, 1-6 allowed)
-            const echoHits = step.echoHits || 1;
-            if (echoHits < 1 || echoHits > SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS) {
-                errors.push(`Step ${step.key}: echoHits must be 1-${SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS} (got ${echoHits})`);
-            }
-            // Count steps per key (NOT including echoHits - those are just repetitions)
+            // Count steps per key
             const normalizedKey = step.key.toLowerCase();
             const current = keyStepCount.get(normalizedKey) || 0;
             keyStepCount.set(normalizedKey, current + 1);
@@ -308,7 +303,7 @@ export class InterceptionExecutor {
                 errors.push(`Step ${step.key}: unknown key (no scan code mapping)`);
             }
         }
-        // Check max steps per key (echoHits are separate - they're just repetitions within a step)
+        // Check max steps per key
         for (const [key, count] of keyStepCount) {
             if (count > SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY) {
                 errors.push(`Key "${key}" used in ${count} steps, maximum is ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} steps per key`);
@@ -335,23 +330,18 @@ export class InterceptionExecutor {
         logger.debug(`Executing ${sequence.length} steps (Interception/kernel mode)`);
         for (let i = 0; i < sequence.length; i++) {
             const step = sequence[i];
-            const echoHits = step.echoHits || 1;
-            // Execute each echo hit
-            for (let hit = 0; hit < echoHits; hit++) {
-                // Send the key via Interception
-                const success = this.sendKey(step.key);
-                if (!success) {
-                    logger.error(`Failed to send key: ${step.key}`);
-                    return false;
-                }
-                logger.debug(`[${i + 1}/${sequence.length}] ${step.key} (hit ${hit + 1}/${echoHits}) via Interception`);
-                // Delay before next keypress (except after last hit of last step)
-                const isLastHit = hit === echoHits - 1;
-                const isLastStep = i === sequence.length - 1;
-                if (!isLastStep || !isLastHit) {
-                    const delay = this.getRandomDelay(step.minDelay, step.maxDelay);
-                    await this.preciseSleep(delay);
-                }
+            // Send the key via Interception
+            const success = this.sendKey(step.key);
+            if (!success) {
+                logger.error(`Failed to send key: ${step.key}`);
+                return false;
+            }
+            logger.debug(`[${i + 1}/${sequence.length}] ${step.key} via Interception`);
+            // Delay before next keypress (except after last step)
+            const isLastStep = i === sequence.length - 1;
+            if (!isLastStep) {
+                const delay = this.getRandomDelay(step.minDelay, step.maxDelay);
+                await this.preciseSleep(delay);
             }
         }
         logger.debug("Sequence completed successfully");
@@ -393,7 +383,7 @@ export class MockInterceptionExecutor {
         if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
             errors.push(`Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`);
         }
-        // Count STEPS per key (not total presses - echoHits don't count toward step limit)
+        // Count STEPS per key
         const keyStepCount = new Map();
         for (const step of sequence) {
             if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
@@ -403,17 +393,12 @@ export class MockInterceptionExecutor {
             if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
                 errors.push(`Step ${step.key}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`);
             }
-            // Echo hits check (per-step, 1-6 allowed)
-            const echoHits = step.echoHits || 1;
-            if (echoHits < 1 || echoHits > SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS) {
-                errors.push(`Step ${step.key}: echoHits must be 1-${SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS} (got ${echoHits})`);
-            }
-            // Count steps per key (NOT including echoHits)
+            // Count steps per key
             const normalizedKey = step.key.toLowerCase();
             const current = keyStepCount.get(normalizedKey) || 0;
             keyStepCount.set(normalizedKey, current + 1);
         }
-        // Check max steps per key (echoHits are separate)
+        // Check max steps per key
         for (const [key, count] of keyStepCount) {
             if (count > SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY) {
                 errors.push(`Key "${key}" used in ${count} steps, maximum is ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} steps per key`);
@@ -430,13 +415,10 @@ export class MockInterceptionExecutor {
             return false;
         }
         logger.debug(`Would execute ${sequence.length} steps:`);
-        let totalPresses = 0;
         for (const step of sequence) {
-            const echoHits = step.echoHits || 1;
-            totalPresses += echoHits;
-            logger.debug(`- ${step.key} x${echoHits} (${step.minDelay}-${step.maxDelay}ms delay)`);
+            logger.debug(`- ${step.key} (${step.minDelay}-${step.maxDelay}ms delay)`);
         }
-        logger.debug(`Total: ${totalPresses} key presses`);
+        logger.debug(`Total: ${sequence.length} key presses`);
         return true;
     }
 }

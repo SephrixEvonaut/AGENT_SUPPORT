@@ -2,8 +2,9 @@
 // SWTOR MACRO AGENT - TYPE DEFINITIONS
 // ============================================================================
 
-// 25 Input Keys for gesture detection
+// 23 Input Keys for gesture detection
 export const INPUT_KEYS = [
+  // Letters (Azeron finger keys)
   "W",
   "A",
   "S",
@@ -16,6 +17,9 @@ export const INPUT_KEYS = [
   "C",
   "H",
   "P",
+  // Function key
+  "F2",
+  // Number keys
   "1",
   "2",
   "3",
@@ -25,10 +29,10 @@ export const INPUT_KEYS = [
   "7",
   "8",
   "9",
-  "LEFT_CLICK",
-  "RIGHT_CLICK",
+  // Special keys
+  "=",
+  // Venus mouse
   "MIDDLE_CLICK",
-  "SCROLL_UP",
 ] as const;
 
 export type InputKey = (typeof INPUT_KEYS)[number];
@@ -113,10 +117,10 @@ export interface SequenceStep {
   name?: string; // Optional step name for display/debugging
   minDelay: number; // Minimum ms before next press (>= 25ms)
   maxDelay: number; // Maximum ms before next press (variance >= 4ms)
-  echoHits?: number; // Number of times to repeat this key (1-6, default 1)
   /**
    * How long to hold the key down (inclusive range in ms).
-   * Defaults to [15, 27] if omitted.
+   * Defaults to [23, 38] if omitted.
+   * Uses weighted distribution: 37ms=10%, 29ms=10%, 23ms=10%, rest=70% uniform
    */
   keyDownDuration?: [number, number];
 
@@ -143,6 +147,50 @@ export interface SequenceStep {
    * Defaults to same as keyDownDuration if omitted.
    */
   dualKeyDownDuration?: [number, number];
+
+  /**
+   * If true, this key will be held down through the next step's execution
+   * and released during the next step's buffer period.
+   * Used for focus target modifiers (e.g., Shift+R) that need to remain
+   * held while the next ability executes.
+   */
+  holdThroughNext?: boolean;
+
+  /**
+   * Minimum delay (ms) before releasing a held modifier during next step's buffer.
+   * Only applies if holdThroughNext is true.
+   * Must be >= 1ms. Defaults to 7ms.
+   */
+  releaseDelayMin?: number;
+
+  /**
+   * Maximum delay (ms) before releasing a held modifier during next step's buffer.
+   * Only applies if holdThroughNext is true.
+   * Must be >= releaseDelayMin. Defaults to 18ms.
+   */
+  releaseDelayMax?: number;
+
+  /**
+   * Scroll direction for scroll steps. If set, this step performs a scroll instead of keypress.
+   */
+  scrollDirection?: "up" | "down";
+
+  /**
+   * Number of scroll units (lines). Defaults to 3 if scrollDirection is set.
+   */
+  scrollMagnitude?: number;
+
+  /**
+   * Echo hits: rapid repeat keypresses during the buffer phase.
+   * The key is held and re-pressed 2-3 times within the specified window
+   * to ensure ability activation even with game lag.
+   * Format: { count: 2|3, windowMs: total window time (e.g., 170) }
+   * Presses occur during buffer, not as extra delays.
+   */
+  echoHits?: {
+    count: 2 | 3;
+    windowMs: number;
+  };
 }
 
 // A macro binding: gesture triggers a sequence
@@ -197,8 +245,6 @@ export interface GestureEvent {
 export const SEQUENCE_CONSTRAINTS = {
   MIN_DELAY: 25, // Never faster than 25ms
   MIN_VARIANCE: 4, // max - min must be >= 4ms
-  MAX_UNIQUE_KEYS: 4, // Maximum 4 unique keys per sequence
-  MAX_STEPS_PER_KEY: 6, // Maximum 6 steps per key (echoHits don't count toward this)
-  MAX_ECHO_HITS: 6, // Each step can have 1-6 echo hits (repeats within the step)
-  MAX_REPEATS_PER_KEY: 6, // Legacy alias for MAX_ECHO_HITS - kept for backward compatibility
+  MAX_UNIQUE_KEYS: 6, // Maximum 6 unique keys per sequence
+  MAX_STEPS_PER_KEY: 6, // Maximum 6 steps per key
 } as const;

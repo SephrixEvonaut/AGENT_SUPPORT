@@ -31,7 +31,9 @@ export class TimerManager {
   private async initializeTTS(): Promise<void> {
     try {
       // Dynamically import 'say' package
-      this.sayModule = await import("say");
+      const sayImport = await import("say");
+      // Handle both default export and named export
+      this.sayModule = sayImport.default || sayImport;
       this.ttsAvailable = true;
       logger.info("TTS module loaded successfully");
     } catch (error) {

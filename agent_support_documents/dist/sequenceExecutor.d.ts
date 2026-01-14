@@ -16,6 +16,7 @@ export declare class SequenceExecutor {
     private compiledProfile;
     private trafficController;
     private timerManager;
+    private heldModifier;
     constructor(callback?: ExecutionCallback, compiledProfile?: CompiledProfile);
     /**
      * Provide a compiled profile to enable traffic control.
@@ -31,8 +32,19 @@ export declare class SequenceExecutor {
     private validateSequence;
     /**
      * Get randomized delay between min and max (inclusive)
+     * Uses uniform distribution
      */
     private getRandomDelay;
+    /**
+     * Get weighted random keyDownDuration
+     * Special weights: 37ms=10%, 29ms=10%, 23ms=1%
+     * Remaining 79% distributed equally among other values in range
+     */
+    private getWeightedKeyDownDuration;
+    /**
+     * Map our profile key names to RobotJS key names
+     */
+    private robotJsKeyMap;
     /**
      * Parse a step key which may include modifiers like "SHIFT+Q" or "ALT+NUMPAD7"
      */

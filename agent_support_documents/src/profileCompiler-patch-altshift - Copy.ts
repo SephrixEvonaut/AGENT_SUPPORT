@@ -1,10 +1,14 @@
+// Patch for conundrum logic: allow ALT+SHIFT combos to not be a conundrum for modifier keys
+// This should be merged into profileCompiler.ts logic
+
 import { MacroProfile, CompiledProfile } from "./types.js";
 import { extractRawKey } from "./utils.js";
 
 /**
  * Compile a MacroProfile into a CompiledProfile for O(1) runtime checks
+ * ALT+SHIFT combos are NOT a conundrum for modifier keys (SHIFT/ALT modified keys), but are elsewhere
  */
-export function compileProfile(profile: MacroProfile): CompiledProfile {
+export function compileProfilePatched(profile: MacroProfile): CompiledProfile {
   const rawSet = new Set<string>();
   const shiftSet = new Set<string>();
   const altSet = new Set<string>();
@@ -57,10 +61,4 @@ export function compileProfile(profile: MacroProfile): CompiledProfile {
   return { conundrumKeys, safeKeys };
 }
 
-export function isConundrumKey(
-  key: string,
-  compiled: CompiledProfile
-): boolean {
-  const raw = extractRawKey(key);
-  return compiled.conundrumKeys.has(raw);
-}
+// Usage: replace compileProfile with compileProfilePatched in your macro agent for this test.

@@ -1,4 +1,4 @@
-export declare const INPUT_KEYS: readonly ["W", "A", "S", "D", "B", "I", "Y", "U", "T", "C", "H", "P", "1", "2", "3", "4", "5", "6", "7", "8", "9", "LEFT_CLICK", "RIGHT_CLICK", "MIDDLE_CLICK", "SCROLL_UP"];
+export declare const INPUT_KEYS: readonly ["W", "A", "S", "D", "B", "I", "Y", "U", "T", "C", "H", "P", "F2", "1", "2", "3", "4", "5", "6", "7", "8", "9", "MIDDLE_CLICK"];
 export type InputKey = (typeof INPUT_KEYS)[number];
 export declare const OUTPUT_KEYS: readonly ["J", "K", "L", "M", "N", "O", "Q", "R", "V", "X", "Z", ",", ".", "'", ";", "]", "[", "F6", "F7", "F8", "F9", "NUMPAD0", "NUMPAD1", "NUMPAD2", "NUMPAD3", "NUMPAD4", "NUMPAD5", "NUMPAD6", "NUMPAD7", "NUMPAD8", "NUMPAD9", "NUMPAD_ADD", "NUMPAD_MULTIPLY", "NUMPAD_DECIMAL", "NUMPAD_SUBTRACT", "BACKSPACE", "END", "ESCAPE"];
 export type OutputKey = (typeof OUTPUT_KEYS)[number];
@@ -9,10 +9,10 @@ export interface SequenceStep {
     name?: string;
     minDelay: number;
     maxDelay: number;
-    echoHits?: number;
     /**
      * How long to hold the key down (inclusive range in ms).
-     * Defaults to [15, 27] if omitted.
+     * Defaults to [23, 38] if omitted.
+     * Uses weighted distribution: 37ms=10%, 29ms=10%, 23ms=10%, rest=70% uniform
      */
     keyDownDuration?: [number, number];
     /**
@@ -35,6 +35,25 @@ export interface SequenceStep {
      * Defaults to same as keyDownDuration if omitted.
      */
     dualKeyDownDuration?: [number, number];
+    /**
+     * If true, this key will be held down through the next step's execution
+     * and released during the next step's buffer period.
+     * Used for focus target modifiers (e.g., Shift+R) that need to remain
+     * held while the next ability executes.
+     */
+    holdThroughNext?: boolean;
+    /**
+     * Minimum delay (ms) before releasing a held modifier during next step's buffer.
+     * Only applies if holdThroughNext is true.
+     * Must be >= 1ms. Defaults to 7ms.
+     */
+    releaseDelayMin?: number;
+    /**
+     * Maximum delay (ms) before releasing a held modifier during next step's buffer.
+     * Only applies if holdThroughNext is true.
+     * Must be >= releaseDelayMin. Defaults to 18ms.
+     */
+    releaseDelayMax?: number;
 }
 export interface MacroBinding {
     name: string;
@@ -78,8 +97,6 @@ export interface GestureEvent {
 export declare const SEQUENCE_CONSTRAINTS: {
     readonly MIN_DELAY: 25;
     readonly MIN_VARIANCE: 4;
-    readonly MAX_UNIQUE_KEYS: 4;
+    readonly MAX_UNIQUE_KEYS: 6;
     readonly MAX_STEPS_PER_KEY: 6;
-    readonly MAX_ECHO_HITS: 6;
-    readonly MAX_REPEATS_PER_KEY: 6;
 };

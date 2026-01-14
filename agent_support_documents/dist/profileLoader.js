@@ -5,16 +5,16 @@ import fs from "fs";
 import path from "path";
 import { SEQUENCE_CONSTRAINTS, INPUT_KEYS, GESTURE_TYPES, OUTPUT_KEYS, } from "./types.js";
 import { compileProfile } from "./profileCompiler.js";
-// Default gesture settings
+// Default gesture settings (TRIPLED from original for more forgiving detection)
 export const DEFAULT_GESTURE_SETTINGS = {
-    multiPressWindow: 350,
-    debounceDelay: 10,
-    longPressMin: 80,
-    longPressMax: 145,
-    superLongMin: 146,
-    superLongMax: 265,
-    // Cancel/nullify threshold: >265ms (set to 266ms to trigger cancel when exceeded)
-    cancelThreshold: 266,
+    multiPressWindow: 240, // Initial window after first press (ms) - was 80
+    debounceDelay: 30, // was 10
+    longPressMin: 240, // 240-435ms = long press - was 80-145
+    longPressMax: 435,
+    superLongMin: 436, // 436-795ms = super long press - was 146-265
+    superLongMax: 795,
+    // Cancel/nullify threshold: >795ms (set to 796ms to trigger cancel when exceeded)
+    cancelThreshold: 796, // was 266
 };
 export class ProfileLoader {
     profileDir;
@@ -99,15 +99,15 @@ export class ProfileLoader {
                 errors.push(`Binding ${index} "${binding.name}": ` +
                     `${uniqueKeys.size} unique keys > ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS} maximum`);
             }
-            // Count repeats per key
+            // Count steps per key
             const keyCounts = new Map();
             for (const step of binding.sequence) {
                 keyCounts.set(step.key, (keyCounts.get(step.key) || 0) + 1);
             }
             for (const [key, count] of keyCounts) {
-                if (count > SEQUENCE_CONSTRAINTS.MAX_REPEATS_PER_KEY) {
+                if (count > SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY) {
                     errors.push(`Binding ${index} "${binding.name}": ` +
-                        `Key "${key}" repeats ${count}x > ${SEQUENCE_CONSTRAINTS.MAX_REPEATS_PER_KEY} maximum`);
+                        `Key "${key}" used in ${count} steps > ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} maximum`);
                 }
             }
         }

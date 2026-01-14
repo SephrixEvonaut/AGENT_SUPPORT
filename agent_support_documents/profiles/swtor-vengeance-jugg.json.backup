@@ -20,8 +20,7 @@
       "sequence": [
         {
           "key": "NUMPAD0",
-          "bufferTier": "low",
-          "echoHits": { "count": 2, "windowMs": 170 }
+          "bufferTier": "low"
         }
       ],
       "enabled": true
@@ -52,7 +51,7 @@
           "bufferTier": "low"
         },
         {
-          "key": "NUMPAD6",
+          "key": "SHIFT+O",
           "bufferTier": "medium"
         },
         {
@@ -74,7 +73,7 @@
           "bufferTier": "low"
         },
         {
-          "key": "NUMPAD6",
+          "key": "SHIFT+O",
           "bufferTier": "medium"
         },
         {
@@ -126,7 +125,7 @@
           "bufferTier": "low"
         },
         {
-          "key": "NUMPAD6",
+          "key": "SHIFT+O",
           "bufferTier": "medium"
         },
         {
@@ -164,7 +163,7 @@
           "bufferTier": "low"
         },
         {
-          "key": "NUMPAD6",
+          "key": "SHIFT+O",
           "bufferTier": "medium"
         },
         {
@@ -195,8 +194,7 @@
       "sequence": [
         {
           "key": "F9",
-          "bufferTier": "low",
-          "echoHits": { "count": 2, "windowMs": 170 }
+          "bufferTier": "low"
         }
       ],
       "enabled": true
@@ -210,8 +208,7 @@
       "sequence": [
         {
           "key": "F6",
-          "bufferTier": "low",
-          "echoHits": { "count": 2, "windowMs": 170 }
+          "bufferTier": "low"
         }
       ],
       "enabled": true
@@ -297,11 +294,10 @@
       "sequence": [
         {
           "key": "F7",
-          "bufferTier": "low",
-          "echoHits": { "count": 2, "windowMs": 170 }
+          "bufferTier": "low"
         },
         {
-          "key": "ALT+X",
+          "key": "SHIFT+R",
           "bufferTier": "medium"
         },
         {
@@ -412,7 +408,7 @@
       },
       "sequence": [
         {
-          "key": "NUMPAD6",
+          "key": "SHIFT+O",
           "bufferTier": "low"
         },
         {
@@ -462,7 +458,7 @@
       },
       "sequence": [
         {
-          "key": "ALT+NUMPAD9",
+          "key": "ALT+M",
           "bufferTier": "low"
         }
       ],
@@ -494,7 +490,7 @@
       },
       "sequence": [
         {
-          "key": "ALT+NUMPAD5",
+          "key": "ALT+O",
           "bufferTier": "low"
         }
       ],
@@ -508,7 +504,7 @@
       },
       "sequence": [
         {
-          "key": "ALT+NUMPAD7",
+          "key": "ALT+N",
           "bufferTier": "low"
         }
       ],
@@ -522,7 +518,7 @@
       },
       "sequence": [
         {
-          "key": "ALT+NUMPAD8",
+          "key": "SHIFT+X",
           "bufferTier": "low"
         }
       ],
@@ -540,7 +536,7 @@
           "bufferTier": "low"
         },
         {
-          "key": "ALT+NUMPAD5",
+          "key": "ALT+O",
           "bufferTier": "low"
         }
       ],
@@ -554,7 +550,7 @@
       },
       "sequence": [
         {
-          "key": "NUMPAD9",
+          "key": "SHIFT+N",
           "bufferTier": "medium"
         },
         {
@@ -669,8 +665,7 @@
       "sequence": [
         {
           "key": "N",
-          "bufferTier": "low",
-          "echoHits": { "count": 2, "windowMs": 170 }
+          "bufferTier": "low"
         }
       ],
       "enabled": true
@@ -800,8 +795,7 @@
       "sequence": [
         {
           "key": "O",
-          "bufferTier": "low",
-          "echoHits": { "count": 2, "windowMs": 170 }
+          "bufferTier": "low"
         }
       ],
       "enabled": true
@@ -814,7 +808,7 @@
       },
       "sequence": [
         {
-          "key": "ALT+NUMPAD6",
+          "key": "ALT+K",
           "bufferTier": "low"
         }
       ],
@@ -857,8 +851,7 @@
       "sequence": [
         {
           "key": "Z",
-          "bufferTier": "low",
-          "echoHits": { "count": 2, "windowMs": 170 }
+          "bufferTier": "low"
         }
       ],
       "enabled": true
@@ -885,7 +878,7 @@
       },
       "sequence": [
         {
-          "key": "ALT+NUMPAD4",
+          "key": "ALT+J",
           "bufferTier": "low"
         }
       ],
@@ -959,8 +952,7 @@
       "sequence": [
         {
           "key": "K",
-          "bufferTier": "low",
-          "echoHits": { "count": 3, "windowMs": 170 }
+          "bufferTier": "low"
         }
       ],
       "enabled": true
@@ -1074,8 +1066,7 @@
       "sequence": [
         {
           "key": "[",
-          "bufferTier": "low",
-          "echoHits": { "count": 2, "windowMs": 170 }
+          "bufferTier": "low"
         }
       ],
       "enabled": true
@@ -1088,7 +1079,7 @@
       },
       "sequence": [
         {
-          "key": "NUMPAD4",
+          "key": "SHIFT+M",
           "bufferTier": "low"
         }
       ],
@@ -1138,7 +1129,7 @@
           "bufferTier": "medium"
         },
         {
-          "key": "NUMPAD4",
+          "key": "SHIFT+M",
           "bufferTier": "low"
         }
       ],
@@ -1171,8 +1162,7 @@
       "sequence": [
         {
           "key": "SHIFT+J",
-          "bufferTier": "low",
-          "echoHits": { "count": 2, "windowMs": 170 }
+          "bufferTier": "low"
         }
       ],
       "enabled": true
@@ -1185,9 +1175,8 @@
       },
       "sequence": [
         {
-          "key": "NUMPAD5",
-          "bufferTier": "low",
-          "echoHits": { "count": 2, "windowMs": 170 }
+          "key": "SHIFT+K",
+          "bufferTier": "low"
         }
       ],
       "enabled": true
@@ -1201,8 +1190,7 @@
       "sequence": [
         {
           "key": "SHIFT+Q",
-          "bufferTier": "low",
-          "echoHits": { "count": 2, "windowMs": 170 }
+          "bufferTier": "low"
         }
       ],
       "enabled": true
@@ -1233,7 +1221,7 @@
       },
       "sequence": [
         {
-          "key": "NUMPAD5",
+          "key": "SHIFT+K",
           "bufferTier": "low"
         },
         {
@@ -1295,7 +1283,7 @@
       },
       "sequence": [
         {
-          "key": "NUMPAD5",
+          "key": "SHIFT+K",
           "bufferTier": "low"
         },
         {
@@ -1425,21 +1413,6 @@
           "key": "CTRL+SHIFT+D",
           "bufferTier": "low",
           "name": "Discord Deafen"
-        }
-      ],
-      "enabled": true
-    },
-    {
-      "name": "Quick Scroll Down",
-      "trigger": {
-        "key": "=",
-        "gesture": "double"
-      },
-      "sequence": [
-        {
-          "scrollDirection": "down",
-          "scrollMagnitude": 8,
-          "bufferTier": "low"
         }
       ],
       "enabled": true

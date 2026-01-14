@@ -334,11 +334,6 @@ class KeyGestureStateMachine {
    * Uses immediate processing for low-latency with queue fallback for bursts
    */
   private queueEvent(type: "down" | "up", key: string): void {
-    // Queue overflow protection
-    if (this.eventQueue.length >= 100) {
-      console.error(`❌ Queue overflow, dropping event`);
-      return;
-    }
     // CRITICAL: Ignore ALL events after destroy() is called
     if (this.isStopped) {
       return;
@@ -381,7 +376,7 @@ class KeyGestureStateMachine {
     // Restart interval checker
     this.checkInterval = setInterval(() => {
       this.checkAllPendingGestures();
-    }, 20);
+    }, 50);
 
     // Reset all machines
     for (const machine of this.machines.values()) {
@@ -410,12 +405,38 @@ class KeyGestureStateMachine {
             this._callback(ev);
           } catch {}
           for (const l of this.listeners) {
+      this.machines.set(
+        key,
+        new KeyGestureStateMachine(key, settings, (ev) => {
+          // CRITICAL: Don't emit gestures after destroy
+          if (this.isStopped) return;
+          try {
+            this._callback(ev);
+          } catch {}
+          for (const l of this.listeners) {
             try {
               l(ev);
             } catch {}
           }
         })
       );
+
+    // Clear interval checker
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
     }
+
+    // Clear event queue
+    this.eventQueue = [];
+    this.processingQueue = false;
+
+    // Reset all machines to clear any pending timers
+    for (const machine of this.machines.values()) {
+      machine.reset();
+    }
+
+    // Clear listeners
+    this.listeners.clear();
   }
 }

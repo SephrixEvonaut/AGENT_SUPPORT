@@ -26,12 +26,33 @@ class MacroAgent {
     inputListener;
     profileLoader;
     currentBackend = "robotjs";
+    debugMode = false;
+    preferredProfile = null;
     constructor() {
         this.profileLoader = new ProfileLoader("./profiles");
         // Create input listener
         this.inputListener = new InputListener((event) => {
             this.handleInputEvent(event);
         });
+    }
+    /**
+     * Enable debug mode to show ALL raw key events
+     */
+    setDebugMode(enabled) {
+        this.debugMode = enabled;
+        if (enabled) {
+            // Set up raw event callback to show ALL keyboard events (for debugging peripherals)
+            this.inputListener.setRawEventCallback((rawName, state, rawEvent) => {
+                console.log(`🔎 RAW: name="${rawName}" state=${state} scanCode=${rawEvent.scanCode || "N/A"} vKey=${rawEvent.vKey || "N/A"}`);
+            });
+            console.log("🔧 Debug mode enabled - showing ALL raw key events");
+        }
+    }
+    /**
+     * Set preferred profile to load
+     */
+    setPreferredProfile(profileName) {
+        this.preferredProfile = profileName;
     }
     /**
      * Initialize the executor with specified backend
@@ -56,6 +77,15 @@ class MacroAgent {
      * Handle raw input events
      */
     handleInputEvent(event) {
+        // Debug mode: log ALL incoming events to diagnose peripheral issues
+        if (this.debugMode) {
+            if ("key" in event) {
+                console.log(`🔍 DEBUG [${event.type}] key="${event.key}" ts=${event.timestamp}`);
+            }
+            else {
+                console.log(`🔍 DEBUG [${event.type}] button="${event.button}" ts=${event.timestamp}`);
+            }
+        }
         if (!this.gestureDetector)
             return;
         if ("key" in event) {
@@ -146,8 +176,26 @@ class MacroAgent {
         }
         else {
             console.log(`📂 Available profiles: ${profiles.join(", ")}`);
-            // Load first profile
-            if (!this.loadProfile(profiles[0])) {
+            // Determine which profile to load
+            let profileToLoad;
+            if (this.preferredProfile) {
+                // Use explicitly specified profile
+                if (profiles.includes(this.preferredProfile)) {
+                    profileToLoad = this.preferredProfile;
+                }
+                else {
+                    console.error(`❌ Specified profile not found: ${this.preferredProfile}`);
+                    console.log(`   Available: ${profiles.join(", ")}`);
+                    return;
+                }
+            }
+            else {
+                // Prefer swtor profile if available, otherwise first
+                const swtorProfile = profiles.find((p) => p.toLowerCase().includes("swtor"));
+                profileToLoad = swtorProfile || profiles[0];
+            }
+            console.log(`📌 Loading: ${profileToLoad}`);
+            if (!this.loadProfile(profileToLoad)) {
                 console.error("❌ Failed to load profile");
                 return;
             }
@@ -231,8 +279,14 @@ BACKENDS:
 
 EXAMPLES:
   npm start -- --backend=robotjs
-  npm start -- --backend=interception
+  npm start -- --profile=swtor-vengeance-jugg.json
+  npm start -- --backend=interception --profile=example.json
   npm start -- --backends
+  npm start -- --debug
+
+OPTIONS:
+  --profile=<name>            Load specific profile from profiles/ folder
+  --debug                     Show ALL raw key events (for debugging peripherals)
 
 ENVIRONMENT:
   MACRO_BACKEND=interception   Set default backend via env var
@@ -253,7 +307,19 @@ ENVIRONMENT:
     else if (process.env.MACRO_BACKEND) {
         backend = process.env.MACRO_BACKEND;
     }
+    // Parse profile option
+    let profileName;
+    const profileArg = args.find((a) => a.startsWith("--profile="));
+    if (profileArg) {
+        profileName = profileArg.split("=")[1];
+    }
+    // Parse debug option
+    const debugMode = args.includes("--debug");
     const agent = new MacroAgent();
+    agent.setDebugMode(debugMode);
+    if (profileName) {
+        agent.setPreferredProfile(profileName);
+    }
     // Handle graceful shutdown
     process.on("SIGINT", () => {
         agent.stop();

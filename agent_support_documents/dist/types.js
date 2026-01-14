@@ -1,8 +1,9 @@
 // ============================================================================
 // SWTOR MACRO AGENT - TYPE DEFINITIONS
 // ============================================================================
-// 25 Input Keys for gesture detection
+// 23 Input Keys for gesture detection
 export const INPUT_KEYS = [
+    // Letters (Azeron finger keys)
     "W",
     "A",
     "S",
@@ -15,6 +16,9 @@ export const INPUT_KEYS = [
     "C",
     "H",
     "P",
+    // Function key
+    "F2",
+    // Number keys
     "1",
     "2",
     "3",
@@ -24,10 +28,8 @@ export const INPUT_KEYS = [
     "7",
     "8",
     "9",
-    "LEFT_CLICK",
-    "RIGHT_CLICK",
+    // Venus mouse
     "MIDDLE_CLICK",
-    "SCROLL_UP",
 ];
 // 37 Output keys available for emission (letters, punctuation, function, numpad, special)
 export const OUTPUT_KEYS = [
@@ -94,8 +96,6 @@ export const GESTURE_TYPES = [
 export const SEQUENCE_CONSTRAINTS = {
     MIN_DELAY: 25, // Never faster than 25ms
     MIN_VARIANCE: 4, // max - min must be >= 4ms
-    MAX_UNIQUE_KEYS: 4, // Maximum 4 unique keys per sequence
-    MAX_STEPS_PER_KEY: 6, // Maximum 6 steps per key (echoHits don't count toward this)
-    MAX_ECHO_HITS: 6, // Each step can have 1-6 echo hits (repeats within the step)
-    MAX_REPEATS_PER_KEY: 6, // Legacy alias for MAX_ECHO_HITS - kept for backward compatibility
+    MAX_UNIQUE_KEYS: 6, // Maximum 6 unique keys per sequence
+    MAX_STEPS_PER_KEY: 6, // Maximum 6 steps per key
 };

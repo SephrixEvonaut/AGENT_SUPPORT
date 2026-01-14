@@ -18,6 +18,13 @@ const KEY_NAME_MAP = {
     SPACE: "SPACE",
     RETURN: "ENTER",
     ESCAPE: "ESCAPE",
+    // Azeron joystick numpad keys (have spaces in raw name)
+    "NUMPAD 8": "NUMPAD8",
+    "NUMPAD 4": "NUMPAD4",
+    "NUMPAD 5": "NUMPAD5",
+    "NUMPAD 6": "NUMPAD6",
+    // Venus mouse middle click
+    "MOUSE MIDDLE": "MIDDLE_CLICK",
     // Letters are already uppercase
 };
 // ============================================================================
@@ -94,8 +101,15 @@ export class GlobalInputListener {
     callback;
     isListening = false;
     listener = null;
+    rawEventCallback = null;
     constructor(callback) {
         this.callback = callback;
+    }
+    /**
+     * Set a callback to receive ALL raw key events (for debugging peripherals)
+     */
+    setRawEventCallback(cb) {
+        this.rawEventCallback = cb;
     }
     async start() {
         if (this.isListening)
@@ -105,6 +119,10 @@ export class GlobalInputListener {
             const { GlobalKeyboardListener } = await import("node-global-key-listener");
             this.listener = new GlobalKeyboardListener();
             this.listener.addListener((e, down) => {
+                // If raw event callback is set, forward ALL events for debugging
+                if (this.rawEventCallback) {
+                    this.rawEventCallback(e.name, e.state, e);
+                }
                 // Early exit filter: check if event name is in INPUT_KEYS (saves 80% of processing)
                 const keyName = KEY_NAME_MAP[e.name] || e.name;
                 const upperName = keyName.toUpperCase();
@@ -175,14 +193,26 @@ export class InputListener {
     delegate;
     callback;
     initialized = false;
+    rawEventCallback = null;
     constructor(callback) {
         this.callback = callback;
         this.delegate = new StdinInputListener(callback);
+    }
+    /**
+     * Enable raw event debugging - shows ALL key events including unrecognized ones
+     */
+    setRawEventCallback(cb) {
+        this.rawEventCallback = cb;
     }
     async start() {
         if (!this.initialized) {
             this.delegate = await createInputListener(this.callback, "auto");
             this.initialized = true;
+            // If raw callback was set before start, apply it to the GlobalInputListener
+            if (this.rawEventCallback &&
+                this.delegate instanceof GlobalInputListener) {
+                this.delegate.setRawEventCallback(this.rawEventCallback);
+            }
         }
         if ("start" in this.delegate) {
             const startFn = this.delegate.start.bind(this.delegate);

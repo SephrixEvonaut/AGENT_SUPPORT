@@ -26,7 +26,12 @@ export declare class GlobalInputListener implements IInputListener {
     private callback;
     private isListening;
     private listener;
+    private rawEventCallback;
     constructor(callback: InputCallback);
+    /**
+     * Set a callback to receive ALL raw key events (for debugging peripherals)
+     */
+    setRawEventCallback(cb: (rawName: string, state: string, rawEvent: any) => void): void;
     start(): Promise<void>;
     stop(): void;
     isActive(): boolean;
@@ -37,7 +42,12 @@ export declare class InputListener implements IInputListener {
     private delegate;
     private callback;
     private initialized;
+    private rawEventCallback;
     constructor(callback: InputCallback);
+    /**
+     * Enable raw event debugging - shows ALL key events including unrecognized ones
+     */
+    setRawEventCallback(cb: (rawName: string, state: string, rawEvent: any) => void): void;
     start(): Promise<void>;
     stop(): void;
     isActive(): boolean;

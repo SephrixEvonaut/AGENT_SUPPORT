@@ -8,11 +8,16 @@
     "start": "tsx src/index.ts",
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "manifest:validate": "tsx scripts/manifestSync.ts --validate",
+    "manifest:export": "tsx scripts/manifestSync.ts --export",
+    "manifest:import": "tsx scripts/manifestSync.ts --import"
   },
   "dependencies": {
+    "node-global-key-listener": "^0.3.0",
     "robotjs": "^0.6.0",
-    "say": "^0.16.0"
+    "say": "^0.16.0",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

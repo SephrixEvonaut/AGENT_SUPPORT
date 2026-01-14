@@ -2,7 +2,7 @@
   "name": "Dual Key Test Profile",
   "description": "Test dual key press functionality with F6+F7 combo and 6ms offset",
   "gestureSettings": {
-    "multiPressWindow": 350,
+    "multiPressWindow": 80,
     "debounceDelay": 10,
     "longPressMin": 80,
     "longPressMax": 145,

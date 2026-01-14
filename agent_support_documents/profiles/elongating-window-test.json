@@ -2,7 +2,7 @@
   "name": "Elongating Window Test Profile",
   "description": "Test elongating detection window with slow multi-press gestures on key 1",
   "gestureSettings": {
-    "multiPressWindow": 350,
+    "multiPressWindow": 80,
     "debounceDelay": 10,
     "longPressMin": 80,
     "longPressMax": 145,

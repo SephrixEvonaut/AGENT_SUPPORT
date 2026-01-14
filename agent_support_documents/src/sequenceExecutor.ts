@@ -45,10 +45,24 @@ export class SequenceExecutor {
   // Track all active executions for monitoring
   private activeExecutions: Set<string> = new Set();
 
+  // Global shutdown flag - stops all async operations immediately
+  private isShutdown: boolean = false;
+
   private callback: ExecutionCallback;
   private compiledProfile: CompiledProfile | null = null;
   private trafficController: TrafficController | null = null;
   private timerManager: TimerManager;
+
+  // Abort controllers for cancellable sleeps
+  private sleepAbortController: AbortController | null = null;
+
+  // Track held modifiers from holdThroughNext steps
+  private heldModifier: {
+    key: string;
+    modifiers: string[];
+    releaseDelayMin: number;
+    releaseDelayMax: number;
+  } | null = null;
 
   constructor(callback?: ExecutionCallback, compiledProfile?: CompiledProfile) {
     this.callback = callback || (() => {});
@@ -77,6 +91,14 @@ export class SequenceExecutor {
    * Validate a sequence step meets timing constraints
    */
   private validateStep(step: SequenceStep, stepIndex: number): string | null {
+    // Scroll steps have simpler validation
+    if (step.scrollDirection) {
+      if (!["up", "down"].includes(step.scrollDirection)) {
+        return `Step ${stepIndex}: scrollDirection must be "up" or "down"`;
+      }
+      return null;
+    }
+
     // If bufferTier is provided, we use tiered buffer delays and skip legacy min/max validation
     if (step.bufferTier) {
       if (!["low", "medium", "high"].includes(step.bufferTier)) {
@@ -112,15 +134,13 @@ export class SequenceExecutor {
       const step = sequence[i];
       const error = this.validateStep(step, i);
       if (error) return error;
-
-      const echoHits = step.echoHits || 1;
-      if (echoHits < 1 || echoHits > SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS) {
-        return `Step ${i} ("${step.key}"): echoHits must be 1-${SEQUENCE_CONSTRAINTS.MAX_ECHO_HITS} (got ${echoHits})`;
-      }
     }
 
     const keyStepCount: Map<string, number> = new Map();
     for (const step of sequence) {
+      // Skip scroll steps which don't have a key
+      if (step.scrollDirection) continue;
+
       const normalizedKey = step.key.toLowerCase();
       const count = keyStepCount.get(normalizedKey) || 0;
       keyStepCount.set(normalizedKey, count + 1);
@@ -141,10 +161,63 @@ export class SequenceExecutor {
 
   /**
    * Get randomized delay between min and max (inclusive)
+   * Uses uniform distribution
    */
   private getRandomDelay(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
+
+  /**
+   * Get weighted random keyDownDuration
+   * Special weights: 37ms=10%, 29ms=10%, 23ms=1%
+   * Remaining 79% distributed equally among other values in range
+   */
+  private getWeightedKeyDownDuration(min: number, max: number): number {
+    const roll = Math.random() * 100;
+
+    // Special weighted values (only if within range)
+    if (roll < 10 && max >= 37 && min <= 37) return 37;
+    if (roll < 20 && max >= 29 && min <= 29) return 29;
+    if (roll < 21 && max >= 23 && min <= 23) return 23;
+
+    // Remaining 79%: uniform distribution over the range (excluding weighted values)
+    const excludeSet = new Set([23, 29, 37]);
+    const candidates: number[] = [];
+    for (let v = min; v <= max; v++) {
+      if (!excludeSet.has(v)) candidates.push(v);
+    }
+
+    // If no candidates (edge case), fall back to uniform
+    if (candidates.length === 0) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }
+
+  /**
+   * Map our profile key names to RobotJS key names
+   */
+  private robotJsKeyMap: Record<string, string> = {
+    // Numpad keys - RobotJS uses "numpad_X" format
+    numpad0: "numpad_0",
+    numpad1: "numpad_1",
+    numpad2: "numpad_2",
+    numpad3: "numpad_3",
+    numpad4: "numpad_4",
+    numpad5: "numpad_5",
+    numpad6: "numpad_6",
+    numpad7: "numpad_7",
+    numpad8: "numpad_8",
+    numpad9: "numpad_9",
+    numpad_add: "numpad_+",
+    numpad_subtract: "numpad_-",
+    numpad_multiply: "numpad_*",
+    numpad_decimal: "numpad_.",
+    // Escape key
+    escape: "escape",
+    esc: "escape",
+  };
 
   /**
    * Parse a step key which may include modifiers like "SHIFT+Q" or "ALT+NUMPAD7"
@@ -172,6 +245,11 @@ export class SequenceExecutor {
       base = base.toLowerCase();
     }
 
+    // Apply RobotJS key mapping
+    if (this.robotJsKeyMap[base]) {
+      base = this.robotJsKeyMap[base];
+    }
+
     return { key: base, modifiers };
   }
 
@@ -179,16 +257,32 @@ export class SequenceExecutor {
    * Buffer tier ranges (inclusive)
    */
   private bufferRanges: Record<string, [number, number]> = {
-    low: [11, 17],
-    medium: [15, 24],
-    high: [980, 1270],
+    low: [129, 163],
+    medium: [229, 263],
+    high: [513, 667],
   };
 
   /**
-   * Sleep for specified milliseconds
+   * Sleep for specified milliseconds (cancellable - aborts immediately on shutdown)
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise((resolve) => {
+      if (this.isShutdown) {
+        resolve();
+        return;
+      }
+      const timeoutId = setTimeout(resolve, ms);
+      // Store timeout for potential cancellation
+      const checkShutdown = setInterval(() => {
+        if (this.isShutdown) {
+          clearTimeout(timeoutId);
+          clearInterval(checkShutdown);
+          resolve();
+        }
+      }, 5); // Check every 5ms for shutdown
+      // Also clear interval when timeout completes normally
+      setTimeout(() => clearInterval(checkShutdown), ms + 10);
+    });
   }
 
   /**
@@ -197,7 +291,8 @@ export class SequenceExecutor {
   private pressKey(key: string): void {
     // Keep for backward compatibility but prefer explicit key+modifier flow
     const { key: parsedKey, modifiers } = this.parseKey(key);
-    robot.keyTap(parsedKey, modifiers.length === 0 ? undefined : modifiers);
+    // Must pass [] not undefined - Windows RobotJS bug with undefined modifiers
+    robot.keyTap(parsedKey, modifiers);
   }
 
   /**
@@ -245,11 +340,67 @@ export class SequenceExecutor {
   }
 
   /**
+   * Grant supremacy to a macro - it bypasses traffic control entirely
+   * Use for high-priority macros that should never wait
+   */
+  grantSupremacy(macroName: string): void {
+    if (this.trafficController) {
+      this.trafficController.grantSupremacy(macroName);
+    }
+  }
+
+  /**
+   * Revoke supremacy from a macro
+   */
+  revokeSupremacy(macroName: string): void {
+    if (this.trafficController) {
+      this.trafficController.revokeSupremacy(macroName);
+    }
+  }
+
+  /**
+   * Get list of macros with supremacy
+   */
+  getSupremacyList(): string[] {
+    return this.trafficController?.getSupremacyList() || [];
+  }
+
+  /**
+   * Destroy the executor - stops all operations and prevents new ones
+   */
+  destroy(): void {
+    this.isShutdown = true;
+    // Cancel all bindings first
+    this.cancelAll();
+    // Cancel any timers
+    this.timerManager.cancelAllTimers();
+    // Release any held keys immediately
+    if (this.heldModifier) {
+      try {
+        robot.keyToggle(
+          this.heldModifier.key,
+          "up",
+          this.heldModifier.modifiers
+        );
+      } catch (e) {
+        /* ignore */
+      }
+      this.heldModifier = null;
+    }
+    // Clear all state
+    this.activeExecutions.clear();
+    this.isExecuting.clear();
+  }
+
+  /**
    * Execute a macro binding's sequence (fire-and-forget)
    * This method launches the execution as a detached promise, allowing
    * multiple different bindings to run simultaneously.
    */
   executeDetached(binding: MacroBinding): void {
+    // Check if shutdown in progress
+    if (this.isShutdown) return;
+
     // Check if this specific binding is already executing
     if (this.isExecuting.get(binding.name)) {
       logger.warn(`"${binding.name}" already executing, skipping...`);
@@ -258,7 +409,9 @@ export class SequenceExecutor {
 
     // Launch as detached promise (don't await - allows concurrency)
     this.executeInternal(binding).catch((error) => {
-      logger.error(`Detached execution error for "${binding.name}":`, error);
+      if (!this.isShutdown) {
+        logger.error(`Detached execution error for "${binding.name}":`, error);
+      }
     });
   }
 
@@ -267,6 +420,7 @@ export class SequenceExecutor {
    * Use this when you need to wait for completion.
    */
   async execute(binding: MacroBinding): Promise<boolean> {
+    if (this.isShutdown) return false;
     return this.executeInternal(binding);
   }
 
@@ -312,161 +466,25 @@ export class SequenceExecutor {
 
     try {
       for (let i = 0; i < sequence.length; i++) {
-        // Check if cancelled
-        if (!this.isExecuting.get(name)) {
+        // Check if cancelled or shutdown
+        if (this.isShutdown || !this.isExecuting.get(name)) {
           logger.info(`"${name}" cancelled`);
           return false;
         }
 
         const step = sequence[i];
-        const echoHits = step.echoHits || 1;
 
-        // Execute each echo hit for this step
-        for (let hit = 0; hit < echoHits; hit++) {
-          // Check if cancelled between hits
-          if (!this.isExecuting.get(name)) {
-            logger.info(`"${name}" cancelled`);
-            return false;
-          }
+        // SCROLL HANDLING: Check if this is a scroll step (must be before parseKey since scroll steps have no key)
+        if (step.scrollDirection) {
+          const magnitude = step.scrollMagnitude ?? 3;
+          // robotjs scrollMouse: positive y = scroll up, negative y = scroll down
+          const scrollY =
+            step.scrollDirection === "down" ? -magnitude : magnitude;
 
-          // Press the key (support modifiers, hold duration, and dual keys)
-          const { key: parsedKey, modifiers } = this.parseKey(step.key);
+          logger.debug(`Scroll ${step.scrollDirection}: ${magnitude} units`);
+          robot.scrollMouse(0, scrollY);
 
-          // DISCORD CONTROL DETECTION: Check if this is a Discord control step
-          if (parsedKey === "end" && step.name?.includes("Discord")) {
-            const discordController = getDiscordController();
-            let handled = false;
-            let skipKeyPress = false;
-
-            // Volume control (OS-level)
-            if (step.name.includes("Volume: Low")) {
-              logger.info("Discord: Setting LOW volume (OS)");
-              await discordController.setVolume("low");
-              skipKeyPress = true;
-              handled = true;
-            } else if (step.name.includes("Volume: Medium")) {
-              logger.info("Discord: Setting MEDIUM volume (OS)");
-              await discordController.setVolume("medium");
-              skipKeyPress = true;
-              handled = true;
-            } else if (step.name.includes("Volume: High")) {
-              logger.info("Discord: Setting HIGH volume (OS)");
-              await discordController.setVolume("high");
-              skipKeyPress = true;
-              handled = true;
-            }
-            // Mic toggle (Discord hotkey)
-            else if (step.name.includes("Mic Toggle")) {
-              logger.info("Discord: Mic toggle via hotkey (CTRL+SHIFT+M)");
-              await discordController.pressDiscordMicToggle();
-              // Will press the actual key below
-              handled = true;
-            }
-            // Deafen toggle (Discord hotkey)
-            else if (step.name.includes("Deafen")) {
-              logger.info("Discord: Deafen toggle via hotkey (CTRL+SHIFT+D)");
-              await discordController.pressDiscordDeafenToggle();
-              // Will press the actual key below
-              handled = true;
-            }
-
-            if (handled) {
-              // Emit step event for monitoring
-              this.callback({
-                type: "step",
-                bindingName: name,
-                step,
-                stepIndex: i,
-                timestamp: Date.now(),
-              });
-
-              // Skip key execution for OS-level volume control only
-              if (skipKeyPress) {
-                // Skip key execution - Discord OS action executed instead
-                continue;
-              }
-              // For hotkey-based commands, continue to execute the actual keypress below
-            }
-          }
-
-          // TIMER DETECTION: Check if this is a timer step
-          if (parsedKey === "end" && step.name?.includes("Timer placeholder")) {
-            // Parse timer duration and message from step.name
-            // Format: "Timer placeholder - implement TTS: 'message' after N seconds"
-            const durationMatch = step.name.match(/(\d+)\s*seconds?/);
-            const messageMatch = step.name.match(/[''](.*?)['']/);
-
-            if (durationMatch && messageMatch) {
-              const duration = parseInt(durationMatch[1], 10);
-              const message = messageMatch[1];
-
-              // Generate timer ID from binding name or use message as fallback
-              const timerId = message.toLowerCase().replace(/\s+/g, "_");
-
-              logger.debug(
-                `Timer detected: ${timerId} (${duration}s) → "${message}"`
-              );
-
-              // Start timer instead of pressing END key
-              this.timerManager.startTimer(timerId, duration, message);
-
-              // Emit step event for monitoring
-              this.callback({
-                type: "step",
-                bindingName: name,
-                step,
-                stepIndex: i,
-                timestamp: Date.now(),
-              });
-
-              // Skip key execution - timer started instead
-              continue;
-            } else {
-              logger.warn(
-                `Timer step detected but couldn't parse: "${step.name}"`
-              );
-              // Fall through to normal key execution
-            }
-          }
-
-          // Traffic control for conundrum keys: wait if necessary
-          if (this.compiledProfile && this.trafficController) {
-            const needsTraffic = isConundrumKey(step.key, this.compiledProfile);
-            if (needsTraffic) {
-              await this.trafficController.requestCrossing(step.key);
-            }
-          }
-
-          // Determine key down duration (default [15,27])
-          const kd = step.keyDownDuration || [15, 27];
-          const keyDownMs = this.getRandomDelay(kd[0], kd[1]);
-
-          // Check for dual key configuration
-          const hasDualKey = step.dualKey !== undefined;
-          let dualParsedKey: { key: string; modifiers: string[] } | null = null;
-          let dualKeyDownMs = 0;
-
-          if (hasDualKey) {
-            // Parse dual key
-            dualParsedKey = this.parseKey(step.dualKey!);
-
-            // Determine dual key hold duration (defaults to primary key duration)
-            const dualKd = step.dualKeyDownDuration || kd;
-            dualKeyDownMs = this.getRandomDelay(dualKd[0], dualKd[1]);
-          }
-
-          // PRIMARY KEY DOWN
-          try {
-            robot.keyToggle(
-              parsedKey,
-              "down",
-              modifiers.length === 0 ? undefined : modifiers
-            );
-          } catch (err) {
-            // Fallback to keyTap if keyToggle unsupported for this key
-            this.pressKey(step.key);
-          }
-
+          // Emit step event for monitoring
           this.callback({
             type: "step",
             bindingName: name,
@@ -475,129 +493,529 @@ export class SequenceExecutor {
             timestamp: Date.now(),
           });
 
-          if (hasDualKey) {
-            // DUAL KEY MODE: Press second key after offset
-            const offsetMs = step.dualKeyOffsetMs ?? 6; // Default 6ms offset
+          // Apply delay for next step
+          const delay = step.bufferTier
+            ? this.getRandomDelay(...this.bufferRanges[step.bufferTier])
+            : this.getRandomDelay(step.minDelay || 25, step.maxDelay || 50);
+          if (delay > 0) await this.sleep(delay);
 
-            logger.debug(
-              `[${i + 1}/${sequence.length}] Pressed "${step.key}" + "${
-                step.dualKey
-              }" (dual, hit ${
-                hit + 1
-              }/${echoHits}) primary=${keyDownMs}ms, dual=${dualKeyDownMs}ms, offset=${offsetMs}ms`
-            );
+          continue; // Skip keypress logic
+        }
 
-            // Wait for offset before pressing dual key
-            await this.sleep(offsetMs);
+        // Press the key (support modifiers, hold duration, and dual keys)
+        const { key: parsedKey, modifiers } = this.parseKey(step.key);
 
-            // DUAL KEY DOWN
-            try {
-              robot.keyToggle(
-                dualParsedKey!.key,
-                "down",
-                dualParsedKey!.modifiers.length === 0
-                  ? undefined
-                  : dualParsedKey!.modifiers
-              );
-            } catch (err) {
-              // Fallback to keyTap if keyToggle unsupported
-              this.pressKey(step.dualKey!);
-            }
+        // DISCORD CONTROL DETECTION: Check if this is a Discord control step
+        if (parsedKey === "end" && step.name?.includes("Discord")) {
+          const discordController = getDiscordController();
+          let handled = false;
+          let skipKeyPress = false;
 
-            // Hold primary key for remaining duration (already held for offsetMs)
-            const primaryRemainingMs = Math.max(0, keyDownMs - offsetMs);
-            await this.sleep(primaryRemainingMs);
-
-            // PRIMARY KEY UP (releases first)
-            try {
-              robot.keyToggle(
-                parsedKey,
-                "up",
-                modifiers.length === 0 ? undefined : modifiers
-              );
-            } catch (err) {
-              // If keyToggle failed, nothing else to do
-            }
-
-            // Hold dual key for its full duration (or remaining if longer than primary)
-            const dualRemainingMs = Math.max(
-              0,
-              dualKeyDownMs - (offsetMs + primaryRemainingMs)
-            );
-            if (dualRemainingMs > 0) {
-              await this.sleep(dualRemainingMs);
-            }
-
-            // DUAL KEY UP (releases second)
-            try {
-              robot.keyToggle(
-                dualParsedKey!.key,
-                "up",
-                dualParsedKey!.modifiers.length === 0
-                  ? undefined
-                  : dualParsedKey!.modifiers
-              );
-            } catch (err) {
-              // If keyToggle failed, nothing else to do
-            }
-          } else {
-            // SINGLE KEY MODE: Normal behavior
-            logger.debug(
-              `[${i + 1}/${sequence.length}] Pressed "${step.key}" (hit ${
-                hit + 1
-              }/${echoHits}) held ${keyDownMs}ms`
-            );
-
-            // Hold duration
-            await this.sleep(keyDownMs);
-
-            // PRIMARY KEY UP
-            try {
-              robot.keyToggle(
-                parsedKey,
-                "up",
-                modifiers.length === 0 ? undefined : modifiers
-              );
-            } catch (err) {
-              // If keyToggle failed, nothing else to do
-            }
+          // Volume control (OS-level)
+          if (step.name.includes("Volume: Low")) {
+            logger.info("Discord: Setting LOW volume (OS)");
+            await discordController.setVolume("low");
+            skipKeyPress = true;
+            handled = true;
+          } else if (step.name.includes("Volume: Medium")) {
+            logger.info("Discord: Setting MEDIUM volume (OS)");
+            await discordController.setVolume("medium");
+            skipKeyPress = true;
+            handled = true;
+          } else if (step.name.includes("Volume: High")) {
+            logger.info("Discord: Setting HIGH volume (OS)");
+            await discordController.setVolume("high");
+            skipKeyPress = true;
+            handled = true;
+          }
+          // Mic toggle (Discord hotkey)
+          else if (step.name.includes("Mic Toggle")) {
+            logger.info("Discord: Mic toggle via hotkey (CTRL+SHIFT+M)");
+            await discordController.pressDiscordMicToggle();
+            // Will press the actual key below
+            handled = true;
+          }
+          // Deafen toggle (Discord hotkey)
+          else if (step.name.includes("Deafen")) {
+            logger.info("Discord: Deafen toggle via hotkey (CTRL+SHIFT+D)");
+            await discordController.pressDiscordDeafenToggle();
+            // Will press the actual key below
+            handled = true;
           }
 
-          // Release traffic control if it was acquired
-          if (this.compiledProfile && this.trafficController) {
-            const needsTraffic = isConundrumKey(step.key, this.compiledProfile);
-            if (needsTraffic) {
-              this.trafficController.releaseCrossing(step.key);
-            }
-          }
-
-          // Determine buffer delay after this key press
-          const isLastHit = hit === echoHits - 1;
-          const isLastStep = i === sequence.length - 1;
-
-          if (!isLastStep || !isLastHit) {
-            let delay: number;
-
-            if (step.bufferTier) {
-              const range = this.bufferRanges[step.bufferTier];
-              delay = this.getRandomDelay(range[0], range[1]);
-            } else {
-              // Fall back to legacy minDelay/maxDelay if bufferTier not provided
-              delay = this.getRandomDelay(step.minDelay, step.maxDelay);
-            }
-
+          if (handled) {
+            // Emit step event for monitoring
             this.callback({
               type: "step",
               bindingName: name,
               step,
               stepIndex: i,
-              delay,
               timestamp: Date.now(),
             });
 
-            console.log(`     ⏱️  Waiting ${delay}ms...`);
+            // Skip key execution for OS-level volume control only
+            if (skipKeyPress) {
+              // Skip key execution - Discord OS action executed instead
+              continue;
+            }
+            // For hotkey-based commands, continue to execute the actual keypress below
+          }
+        }
+
+        // TIMER DETECTION: Check if this is a timer step
+        if (parsedKey === "end" && step.name?.includes("Timer placeholder")) {
+          // Parse timer duration and message from step.name
+          // Format: "Timer placeholder - implement TTS: 'message' after N seconds"
+          const durationMatch = step.name.match(/(\d+)\s*seconds?/);
+          const messageMatch = step.name.match(/[''](.*?)['']/);
+
+          if (durationMatch && messageMatch) {
+            const duration = parseInt(durationMatch[1], 10);
+            const message = messageMatch[1];
+
+            // Generate timer ID from binding name or use message as fallback
+            const timerId = message.toLowerCase().replace(/\s+/g, "_");
+
+            logger.debug(
+              `Timer detected: ${timerId} (${duration}s) → "${message}"`
+            );
+
+            // Start timer instead of pressing END key
+            this.timerManager.startTimer(timerId, duration, message);
+
+            // Emit step event for monitoring
+            this.callback({
+              type: "step",
+              bindingName: name,
+              step,
+              stepIndex: i,
+              timestamp: Date.now(),
+            });
+
+            // Skip key execution - timer started instead
+            continue;
+          } else {
+            logger.warn(
+              `Timer step detected but couldn't parse: "${step.name}"`
+            );
+            // Fall through to normal key execution
+          }
+        }
+
+        // ENDURE PAIN TIMER: Automatically start 16s "drop" timer when SHIFT+, is pressed
+        if (
+          step.key.toUpperCase() === "SHIFT+," ||
+          step.key.toUpperCase() === "SHIFT + ,"
+        ) {
+          logger.debug(
+            'Endure Pain detected (SHIFT+,) - starting 16s "drop" timer'
+          );
+          this.timerManager.startTimer("drop", 16, "drop");
+        }
+
+        // Traffic control for conundrum keys: wait if necessary
+        if (this.compiledProfile && this.trafficController) {
+          const needsTraffic = isConundrumKey(step.key, this.compiledProfile);
+          if (needsTraffic) {
+            await this.trafficController.requestCrossing(step.key, name);
+          }
+        }
+
+        // Determine key down duration (default [23,38] with weighted distribution)
+        const kd = step.keyDownDuration || [23, 38];
+        const keyDownMs = this.getWeightedKeyDownDuration(kd[0], kd[1]);
+
+        // Check for dual key configuration
+        const hasDualKey = step.dualKey !== undefined;
+        let dualParsedKey: { key: string; modifiers: string[] } | null = null;
+        let dualKeyDownMs = 0;
+
+        if (hasDualKey) {
+          // Parse dual key
+          dualParsedKey = this.parseKey(step.dualKey!);
+
+          // Determine dual key hold duration (defaults to primary key duration)
+          const dualKd = step.dualKeyDownDuration || kd;
+          dualKeyDownMs = this.getWeightedKeyDownDuration(dualKd[0], dualKd[1]);
+        }
+
+        // PRIMARY KEY DOWN
+        try {
+          // Must pass modifiers array (even if empty) - Windows RobotJS bug with undefined
+          robot.keyToggle(parsedKey, "down", modifiers);
+        } catch (err) {
+          // Fallback to keyTap if keyToggle unsupported for this key
+          this.pressKey(step.key);
+        }
+
+        // Emergency key release on shutdown
+        if (this.isShutdown) {
+          try {
+            robot.keyToggle(parsedKey, "up", modifiers);
+          } catch (e) {
+            /* ignore */
+          }
+          return false;
+        }
+
+        this.callback({
+          type: "step",
+          bindingName: name,
+          step,
+          stepIndex: i,
+          timestamp: Date.now(),
+        });
+
+        if (hasDualKey) {
+          // DUAL KEY MODE: Press second key after offset
+          const offsetMs = step.dualKeyOffsetMs ?? 6; // Default 6ms offset
+
+          logger.debug(
+            `[${i + 1}/${sequence.length}] Pressed "${step.key}" + "${
+              step.dualKey
+            }" (dual) primary=${keyDownMs}ms, dual=${dualKeyDownMs}ms, offset=${offsetMs}ms`
+          );
+
+          // Wait for offset before pressing dual key
+          await this.sleep(offsetMs);
+
+          // Emergency release primary on shutdown
+          if (this.isShutdown) {
+            try {
+              robot.keyToggle(parsedKey, "up", modifiers);
+            } catch (e) {
+              /* ignore */
+            }
+            return false;
+          }
+
+          // DUAL KEY DOWN
+          try {
+            robot.keyToggle(
+              dualParsedKey!.key,
+              "down",
+              dualParsedKey!.modifiers.length === 0
+                ? undefined
+                : dualParsedKey!.modifiers
+            );
+          } catch (err) {
+            // Fallback to keyTap if keyToggle unsupported
+            this.pressKey(step.dualKey!);
+          }
+
+          // Emergency release both on shutdown
+          if (this.isShutdown) {
+            try {
+              robot.keyToggle(parsedKey, "up", modifiers);
+            } catch (e) {
+              /* ignore */
+            }
+            try {
+              robot.keyToggle(
+                dualParsedKey!.key,
+                "up",
+                dualParsedKey!.modifiers.length === 0
+                  ? undefined
+                  : dualParsedKey!.modifiers
+              );
+            } catch (e) {
+              /* ignore */
+            }
+            return false;
+          }
+
+          // Hold primary key for remaining duration (already held for offsetMs)
+          const primaryRemainingMs = Math.max(0, keyDownMs - offsetMs);
+          await this.sleep(primaryRemainingMs);
+
+          // Emergency release both on shutdown
+          if (this.isShutdown) {
+            try {
+              robot.keyToggle(parsedKey, "up", modifiers);
+            } catch (e) {
+              /* ignore */
+            }
+            try {
+              robot.keyToggle(
+                dualParsedKey!.key,
+                "up",
+                dualParsedKey!.modifiers.length === 0
+                  ? undefined
+                  : dualParsedKey!.modifiers
+              );
+            } catch (e) {
+              /* ignore */
+            }
+            return false;
+          }
+
+          // PRIMARY KEY UP (releases first)
+          try {
+            // Must pass modifiers array (even if empty) - Windows RobotJS bug with undefined
+            robot.keyToggle(parsedKey, "up", modifiers);
+          } catch (err) {
+            // If keyToggle failed, nothing else to do
+          }
+
+          // Hold dual key for its full duration (or remaining if longer than primary)
+          const dualRemainingMs = Math.max(
+            0,
+            dualKeyDownMs - (offsetMs + primaryRemainingMs)
+          );
+          if (dualRemainingMs > 0) {
+            await this.sleep(dualRemainingMs);
+            // Emergency release dual on shutdown
+            if (this.isShutdown) {
+              try {
+                robot.keyToggle(
+                  dualParsedKey!.key,
+                  "up",
+                  dualParsedKey!.modifiers.length === 0
+                    ? undefined
+                    : dualParsedKey!.modifiers
+                );
+              } catch (e) {
+                /* ignore */
+              }
+              return false;
+            }
+          }
+
+          // DUAL KEY UP (releases second)
+          try {
+            robot.keyToggle(
+              dualParsedKey!.key,
+              "up",
+              dualParsedKey!.modifiers.length === 0
+                ? undefined
+                : dualParsedKey!.modifiers
+            );
+          } catch (err) {
+            // If keyToggle failed, nothing else to do
+          }
+        } else {
+          // SINGLE KEY MODE: Normal behavior
+          logger.debug(
+            `[${i + 1}/${sequence.length}] Pressed "${
+              step.key
+            }" held ${keyDownMs}ms`
+          );
+
+          // Hold duration
+          await this.sleep(keyDownMs);
+
+          // Emergency release on shutdown
+          if (this.isShutdown) {
+            try {
+              robot.keyToggle(parsedKey, "up", modifiers);
+            } catch (e) {
+              /* ignore */
+            }
+            return false;
+          }
+
+          // Check if this step should hold through next step
+          if (step.holdThroughNext) {
+            // Store held modifier info for release during next step's buffer
+            this.heldModifier = {
+              key: parsedKey,
+              modifiers,
+              releaseDelayMin: step.releaseDelayMin ?? 7,
+              releaseDelayMax: step.releaseDelayMax ?? 18,
+            };
+            logger.debug(
+              `Holding "${step.key}" through next step (will release after ${this.heldModifier.releaseDelayMin}-${this.heldModifier.releaseDelayMax}ms of next buffer)`
+            );
+            // Skip the normal release - key stays down
+          } else {
+            // PRIMARY KEY UP (normal release)
+            try {
+              // Must pass modifiers array (even if empty) - Windows RobotJS bug with undefined
+              robot.keyToggle(parsedKey, "up", modifiers);
+            } catch (err) {
+              // If keyToggle failed, nothing else to do
+            }
+          }
+        }
+
+        // Release traffic control if it was acquired
+        if (this.compiledProfile && this.trafficController) {
+          const needsTraffic = isConundrumKey(step.key, this.compiledProfile);
+          if (needsTraffic) {
+            this.trafficController.releaseCrossing(step.key);
+          }
+        }
+
+        // Determine buffer delay after this key press
+        const isLastStep = i === sequence.length - 1;
+
+        if (!isLastStep) {
+          let delay: number;
+
+          if (step.bufferTier) {
+            const range = this.bufferRanges[step.bufferTier];
+            delay = this.getRandomDelay(range[0], range[1]);
+          } else {
+            // Fall back to legacy minDelay/maxDelay if bufferTier not provided
+            delay = this.getRandomDelay(step.minDelay, step.maxDelay);
+          }
+
+          this.callback({
+            type: "step",
+            bindingName: name,
+            step,
+            stepIndex: i,
+            delay,
+            timestamp: Date.now(),
+          });
+
+          console.log(`     ⏱️  Waiting ${delay}ms...`);
+
+          // ECHO HITS: Rapid repeat keypresses during buffer phase
+          if (
+            step.echoHits &&
+            step.echoHits.count > 0 &&
+            step.echoHits.windowMs > 0
+          ) {
+            const echoCount = step.echoHits.count;
+            const echoWindowMs = step.echoHits.windowMs;
+            const echoIntervalMs = Math.floor(echoWindowMs / (echoCount + 1));
+
+            logger.debug(
+              `Echo hits: ${echoCount} repeats of "${step.key}" within ${echoWindowMs}ms (interval ~${echoIntervalMs}ms)`
+            );
+
+            for (let e = 0; e < echoCount; e++) {
+              // Wait for echo interval
+              await this.sleep(echoIntervalMs);
+
+              if (this.isShutdown) return false;
+
+              // Quick tap with short hold (15-25ms for echo)
+              const echoHoldMs = this.getRandomDelay(15, 25);
+              try {
+                robot.keyToggle(parsedKey, "down", modifiers);
+                await this.sleep(echoHoldMs);
+                if (this.isShutdown) {
+                  try {
+                    robot.keyToggle(parsedKey, "up", modifiers);
+                  } catch (e) {}
+                  return false;
+                }
+                robot.keyToggle(parsedKey, "up", modifiers);
+              } catch (err) {
+                // Fallback to keyTap
+                this.pressKey(step.key);
+              }
+
+              logger.debug(
+                `  Echo ${e + 1}/${echoCount}: "${
+                  step.key
+                }" held ${echoHoldMs}ms`
+              );
+            }
+
+            // Remaining buffer time after echo hits
+            const echoTimeUsed = echoIntervalMs * echoCount;
+            const remainingBufferAfterEcho = Math.max(0, delay - echoTimeUsed);
+
+            // Handle held modifier release if applicable
+            if (this.heldModifier && i > 0) {
+              const releaseDelay = this.getRandomDelay(
+                this.heldModifier.releaseDelayMin,
+                this.heldModifier.releaseDelayMax
+              );
+
+              if (remainingBufferAfterEcho >= releaseDelay) {
+                await this.sleep(releaseDelay);
+                logger.debug(
+                  `Releasing held modifier after ${releaseDelay}ms of remaining buffer`
+                );
+                try {
+                  robot.keyToggle(
+                    this.heldModifier.key,
+                    "up",
+                    this.heldModifier.modifiers.length === 0
+                      ? undefined
+                      : this.heldModifier.modifiers
+                  );
+                } catch (err) {
+                  /* ignore */
+                }
+                this.heldModifier = null;
+
+                const finalRemaining = remainingBufferAfterEcho - releaseDelay;
+                if (finalRemaining > 0) {
+                  await this.sleep(finalRemaining);
+                }
+              } else {
+                await this.sleep(remainingBufferAfterEcho);
+              }
+            } else if (remainingBufferAfterEcho > 0) {
+              await this.sleep(remainingBufferAfterEcho);
+            }
+          }
+          // If there's a held modifier from the previous step, release it partway through this buffer
+          else if (this.heldModifier && i > 0) {
+            const releaseDelay = this.getRandomDelay(
+              this.heldModifier.releaseDelayMin,
+              this.heldModifier.releaseDelayMax
+            );
+
+            // Wait for the release delay first
+            await this.sleep(releaseDelay);
+
+            // Release the held modifier
+            logger.debug(
+              `Releasing held modifier after ${releaseDelay}ms of buffer`
+            );
+            try {
+              robot.keyToggle(
+                this.heldModifier.key,
+                "up",
+                this.heldModifier.modifiers.length === 0
+                  ? undefined
+                  : this.heldModifier.modifiers
+              );
+            } catch (err) {
+              // If keyToggle failed, nothing else to do
+            }
+
+            // Clear held modifier
+            this.heldModifier = null;
+
+            // Wait for the remaining buffer time
+            const remainingDelay = delay - releaseDelay;
+            if (remainingDelay > 0) {
+              await this.sleep(remainingDelay);
+            }
+          } else {
+            // No held modifier, just wait the full buffer
             await this.sleep(delay);
           }
+        } else if (this.heldModifier) {
+          // Last step and there's a held modifier - release it after its configured delay
+          const releaseDelay = this.getRandomDelay(
+            this.heldModifier.releaseDelayMin,
+            this.heldModifier.releaseDelayMax
+          );
+          await this.sleep(releaseDelay);
+
+          logger.debug(
+            `Releasing held modifier after ${releaseDelay}ms (last step)`
+          );
+          try {
+            robot.keyToggle(
+              this.heldModifier.key,
+              "up",
+              this.heldModifier.modifiers.length === 0
+                ? undefined
+                : this.heldModifier.modifiers
+            );
+          } catch (err) {
+            // If keyToggle failed, nothing else to do
+          }
+          this.heldModifier = null;
         }
       }
 
@@ -622,6 +1040,23 @@ export class SequenceExecutor {
       logger.error(`"${name}" failed: ${errorMsg}`);
       return false;
     } finally {
+      // Cleanup: release any held modifier if sequence ends prematurely
+      if (this.heldModifier) {
+        logger.debug("Cleaning up held modifier due to sequence end/error");
+        try {
+          robot.keyToggle(
+            this.heldModifier.key,
+            "up",
+            this.heldModifier.modifiers.length === 0
+              ? undefined
+              : this.heldModifier.modifiers
+          );
+        } catch (err) {
+          // Ignore cleanup errors
+        }
+        this.heldModifier = null;
+      }
+
       this.isExecuting.set(name, false);
       this.activeExecutions.delete(name);
     }
@@ -642,17 +1077,14 @@ export class SequenceExecutor {
     console.log(`\n🧪 DRY RUN: "${name}" (${sequence.length} steps)`);
 
     const keyCount: Map<string, number> = new Map();
-    let totalPresses = 0;
     for (const step of sequence) {
-      const echoHits = step.echoHits || 1;
-      keyCount.set(step.key, (keyCount.get(step.key) || 0) + echoHits);
-      totalPresses += echoHits;
+      keyCount.set(step.key, (keyCount.get(step.key) || 0) + 1);
     }
 
     logger.info(
       `Unique keys: ${keyCount.size}/${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS}`
     );
-    logger.info(`Total key presses: ${totalPresses}`);
+    logger.info(`Total key presses: ${sequence.length}`);
     for (const [key, count] of keyCount) {
       logger.info(`- "${key}": ${count}x`);
     }
@@ -662,19 +1094,15 @@ export class SequenceExecutor {
 
     for (let i = 0; i < sequence.length; i++) {
       const step = sequence[i];
-      const echoHits = step.echoHits || 1;
       logger.info(
-        `[${i + 1}] "${step.key}" x${echoHits} → wait ${step.minDelay}-${
-          step.maxDelay
-        }ms`
+        `[${i + 1}] "${step.key}" → wait ${step.minDelay}-${step.maxDelay}ms`
       );
 
-      const pressesInStep = echoHits;
       const isLastStep = i === sequence.length - 1;
-      const delayCount = isLastStep ? pressesInStep - 1 : pressesInStep;
-
-      totalMinTime += step.minDelay * delayCount;
-      totalMaxTime += step.maxDelay * delayCount;
+      if (!isLastStep) {
+        totalMinTime += step.minDelay;
+        totalMaxTime += step.maxDelay;
+      }
     }
 
     console.log(`   ⏱️  Total time: ${totalMinTime}-${totalMaxTime}ms\n`);

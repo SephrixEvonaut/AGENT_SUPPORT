@@ -58,10 +58,18 @@ async function runTest() {
     });
   };
 
-  // Sequence definitions: delays chosen so multiPressWindow (350ms) groups presses
-  const short = 50; // <80ms final release
-  const longHold = 100; // 80-145ms
-  const superHold = 160; // 146-265ms
+  // Timing parameters per spec: Window starts from keyDown, not keyUp
+  // Window = keyDownTime + 80 (initial) or keyDownTime + 50 (extension)
+  // So for double: keyDown1=0, keyUp1=short, keyDown2 must be < 80
+  // Need: short + gap < 80 for initial window
+  // For subsequent: need each keyDown within 50ms extension of previous keyDown
+  const short = 30; // <80ms hold = normal press
+  const longHold = 110; // 80-145ms = long press (increased for margin)
+  const superHold = 170; // 146-265ms = super long press (increased for margin)
+  const gap = 20; // Gap between presses (keyUp to next keyDown, increased for margin)
+  // Timeline check: keyDown1=0 → keyUp1=30 → keyDown2=45 (< 80 ✓)
+  //                 window2=45+50=95 → keyUp2=75 → keyDown3=90 (< 95 ✓)
+  //                 window3=90+50=140 → keyUp3=120 → keyDown4=135 (< 140 ✓)
 
   // Run tests sequentially
   await expectGesture(
@@ -72,7 +80,7 @@ async function runTest() {
     ],
     "single"
   );
-  await wait(150);
+  await wait(200);
   await expectGesture(
     "2",
     [
@@ -81,7 +89,7 @@ async function runTest() {
     ],
     "single_long"
   );
-  await wait(150);
+  await wait(200);
   await expectGesture(
     "3",
     [
@@ -97,18 +105,18 @@ async function runTest() {
     [
       { type: "down", delay: 0 },
       { type: "up", delay: short },
-      { type: "down", delay: 100 },
+      { type: "down", delay: gap },
       { type: "up", delay: short },
     ],
     "double"
   );
-  await wait(150);
+  await wait(200);
   await expectGesture(
     "5",
     [
       { type: "down", delay: 0 },
       { type: "up", delay: short },
-      { type: "down", delay: 100 },
+      { type: "down", delay: gap },
       { type: "up", delay: longHold },
     ],
     "double_long"
@@ -119,7 +127,7 @@ async function runTest() {
     [
       { type: "down", delay: 0 },
       { type: "up", delay: short },
-      { type: "down", delay: 100 },
+      { type: "down", delay: gap },
       { type: "up", delay: superHold },
     ],
     "double_super_long"
@@ -131,9 +139,9 @@ async function runTest() {
     [
       { type: "down", delay: 0 },
       { type: "up", delay: short },
-      { type: "down", delay: 100 },
+      { type: "down", delay: gap },
       { type: "up", delay: short },
-      { type: "down", delay: 100 },
+      { type: "down", delay: gap },
       { type: "up", delay: short },
     ],
     "triple"
@@ -144,9 +152,9 @@ async function runTest() {
     [
       { type: "down", delay: 0 },
       { type: "up", delay: short },
-      { type: "down", delay: 100 },
+      { type: "down", delay: gap },
       { type: "up", delay: short },
-      { type: "down", delay: 100 },
+      { type: "down", delay: gap },
       { type: "up", delay: longHold },
     ],
     "triple_long"
@@ -157,9 +165,9 @@ async function runTest() {
     [
       { type: "down", delay: 0 },
       { type: "up", delay: short },
-      { type: "down", delay: 100 },
+      { type: "down", delay: gap },
       { type: "up", delay: short },
-      { type: "down", delay: 100 },
+      { type: "down", delay: gap },
       { type: "up", delay: superHold },
     ],
     "triple_super_long"
@@ -171,11 +179,11 @@ async function runTest() {
     [
       { type: "down", delay: 0 },
       { type: "up", delay: short },
-      { type: "down", delay: 80 },
+      { type: "down", delay: gap },
       { type: "up", delay: short },
-      { type: "down", delay: 80 },
+      { type: "down", delay: gap },
       { type: "up", delay: short },
-      { type: "down", delay: 80 },
+      { type: "down", delay: gap },
       { type: "up", delay: short },
     ],
     "quadruple"
@@ -186,11 +194,11 @@ async function runTest() {
     [
       { type: "down", delay: 0 },
       { type: "up", delay: short },
-      { type: "down", delay: 80 },
+      { type: "down", delay: gap },
       { type: "up", delay: short },
-      { type: "down", delay: 80 },
+      { type: "down", delay: gap },
       { type: "up", delay: short },
-      { type: "down", delay: 80 },
+      { type: "down", delay: gap },
       { type: "up", delay: longHold },
     ],
     "quadruple_long"
@@ -201,11 +209,11 @@ async function runTest() {
     [
       { type: "down", delay: 0 },
       { type: "up", delay: short },
-      { type: "down", delay: 80 },
+      { type: "down", delay: gap },
       { type: "up", delay: short },
-      { type: "down", delay: 80 },
+      { type: "down", delay: gap },
       { type: "up", delay: short },
-      { type: "down", delay: 80 },
+      { type: "down", delay: gap },
       { type: "up", delay: superHold },
     ],
     "quadruple_super_long"
