@@ -1,5 +1,13 @@
 import { CompiledProfile } from "./types.js";
-import { randomRange, sleep, extractRawKey } from "./utils.js";
+import { extractRawKey } from "./utils.js";
+import { getHumanTrafficWait } from "./humanRandomizer.js";
+
+/**
+ * Sleep for a random duration using human-like randomization
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export class TrafficController {
   private crossingKey: string | null = null;
@@ -57,7 +65,9 @@ export class TrafficController {
     this.queue.push({ key: raw, timestamp: Date.now() });
 
     while (this.shouldWait(raw)) {
-      await sleep(randomRange(10, 30));
+      // Use human-like random wait time instead of fixed range
+      const waitMs = getHumanTrafficWait();
+      await sleep(waitMs);
     }
 
     this.crossingKey = raw;

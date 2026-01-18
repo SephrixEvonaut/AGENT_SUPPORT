@@ -341,7 +341,7 @@ describe("Staggered Sequence Execution - Timing Analysis", () => {
     await sleep(20);
     trackingExecutor.executeDetached(shortMacros[1]);
 
-    await sleep(200);
+    await sleep(700);
 
     // Steps should be interleaved (not sequential)
     // Possible orderings: A:J, B:L, A:K, B:M or A:J, A:K, B:L, B:M, etc.
@@ -439,7 +439,7 @@ describe("Staggered Sequence Execution - Timing Analysis", () => {
     executor.executeDetached(tieredMacros[0]);
     executor.executeDetached(tieredMacros[1]);
 
-    await sleep(200);
+    await sleep(700);
 
     // Both should complete - buffer tiers don't block each other
     const completed = events.filter((e) => e.type === "completed");
@@ -542,7 +542,7 @@ describe("Staggered Execution with Traffic Control", () => {
     const startTime = Date.now();
     executor.executeDetached(testProfile.macros[2]); // SafeSeq
 
-    await sleep(200);
+    await sleep(700);
 
     const completed = events.find((e) => e.type === "completed");
     expect(completed).toBeDefined();

@@ -1,12 +1,14 @@
 // ============================================================================
-// GESTURE DETECTOR - Per-key gesture detection with 9 gesture types
+// GESTURE DETECTOR - Per-key gesture detection with 12 gesture types
 // ============================================================================
 //
 // FEATURES:
-// - Per-key isolated state machines (22 independent keys)
+// - Per-key isolated state machines (24 independent keys)
 // - Simultaneous multi-key gesture detection (press W+A+1+2 at once)
 // - Press count capped at 4 (excess presses = quadruple, no long)
 // - Non-blocking async-friendly design for concurrent sequences
+// - Settings-driven timing (reads from GestureSettings)
+// - Await jail prevents accidental triggers after triple/quadruple
 //
 // ============================================================================
 
@@ -24,6 +26,10 @@ export type GestureCallback = (event: GestureEvent) => void;
 // Maximum press count before treating as quadruple
 const MAX_PRESS_COUNT = 4;
 
+// Await jail durations (ms) - blocks new gestures after multi-tap
+const TRIPLE_JAIL_DURATION = 120;    // After triple, block for 120ms
+const QUADRUPLE_JAIL_DURATION = 200; // After quadruple, block for 200ms
+
 interface PressRecord {
   timestamp: number;
   // 'normal' = < longPressMin, 'long' = longPressMin..longPressMax,
@@ -31,8 +37,10 @@ interface PressRecord {
   pressType: "normal" | "long" | "super_long";
 }
 
-// Per-key state machine for gesture detection
+// ============================================================================
+// KeyGestureStateMachine - Per-key state machine for gesture detection
 // Each key has its own completely independent state machine
+// ============================================================================
 class KeyGestureStateMachine {
   private key: InputKey;
   private settings: GestureSettings;
@@ -45,7 +53,7 @@ class KeyGestureStateMachine {
   // Track if we've exceeded the press limit (ignore further presses until reset)
   private pressLimitReached: boolean = false;
 
-  // Elongating window with dynamic timing: multiPressWindow initial + 60ms per additional tap
+  // Elongating window with dynamic timing from settings
   private windowDeadline: number | null = null;
   private waitingForRelease: boolean = false; // Must wait for final key release
 
@@ -56,6 +64,17 @@ class KeyGestureStateMachine {
   // Await jail: after triple/quadruple, block new sequence for N ms
   private awaitJailUntil: number = 0;
 
+  // Settings-driven timing (instead of hardcoded constants)
+  private get initialWindow(): number {
+    return this.settings.multiPressWindow; // 355ms from production
+  }
+
+  // Extension window: 80% of initial window for subsequent presses
+  // This gives comfortable timing for multi-tap sequences
+  private get extensionWindow(): number {
+    return Math.round(this.settings.multiPressWindow * 0.8); // ~285ms
+  }
+
   constructor(
     key: InputKey,
     settings: GestureSettings,
@@ -65,6 +84,14 @@ class KeyGestureStateMachine {
     this.settings = settings;
     this.emitFn = emitFn;
   }
+
+  /**
+   * Update settings at runtime (e.g., when profile changes)
+   */
+  updateSettings(settings: GestureSettings): void {
+    this.settings = settings;
+  }
+
   private clearTimers(): void {
     if (this.gestureTimer) {
       clearTimeout(this.gestureTimer);
@@ -84,7 +111,7 @@ class KeyGestureStateMachine {
           holdDuration,
         });
       } catch {
-        // swallow
+        // swallow callback errors
       }
     });
 
@@ -95,16 +122,6 @@ class KeyGestureStateMachine {
 
   /**
    * Resolve gesture based on press count and long press state
-   *
-   * Press count mapping:
-   * - 1: single or long
-   * - 2: double or double_long
-   * - 3: triple or triple_long
-   * - 4: quadruple_long (only if last is long - otherwise treat as no gesture for now)
-   * - >4: treated as quadruple_long (excess presses, no long check)
-   *
-   * Note: The gesture type system only has quadruple_long, not plain quadruple.
-   * For >4 presses, we assume the user wants quadruple_long regardless of timing.
    */
   private resolveGesture(): void {
     const count = this.pressHistory.length;
@@ -135,37 +152,36 @@ class KeyGestureStateMachine {
     gesture = mapGesture(capped, lastPress.pressType);
 
     // Await jail: after triple or quadruple, block new sequence for N ms
+    // This prevents accidental 5th/6th taps from starting new gestures
     if (gesture.startsWith("triple")) {
-      this.awaitJailUntil = performance.now() + 80;
+      this.awaitJailUntil = performance.now() + TRIPLE_JAIL_DURATION;
     } else if (gesture.startsWith("quadruple")) {
-      this.awaitJailUntil = performance.now() + 150;
+      this.awaitJailUntil = performance.now() + QUADRUPLE_JAIL_DURATION;
     }
+
     this.emitGesture(gesture);
   }
 
-  // Window timing constants (tuned for comfortable human timing)
-  private static readonly INITIAL_WINDOW = 355; // First keyDown to 2nd keyDown window (-20ms for earlier triple start)
-  private static readonly EXTENSION_WINDOW = 285; // Each subsequent keyDown extension (+25ms)
-
   handleKeyDown(): void {
-    // Await jail: block new sequence if still in jail
     const now = performance.now();
+
+    // Await jail: block new sequence if still in jail
     if (now < this.awaitJailUntil) {
       return;
     }
+
     // CRITICAL: Ignore key repeat events (key already held down)
     // This prevents Windows key repeat from triggering multiple presses
     if (this.keyDownTime !== null) {
       return; // Key is already down, this is a repeat event
     }
+
     // If we've already hit the press limit, ignore this press
     if (this.pressLimitReached) {
       return;
     }
 
     // Determine if this keyDown is within the elongating window
-    // This is the critical check - we track it so that even if the key is held
-    // past the window deadline (for long/super_long), it still counts toward the sequence
     const withinWindow =
       this.windowDeadline !== null && now <= this.windowDeadline;
 
@@ -179,21 +195,18 @@ class KeyGestureStateMachine {
         this.gestureTimer = null;
       }
 
-      // CRITICAL: Extend window from THIS keyDown time (not keyUp!)
-      // Per spec: Window = keyDownTime + EXTENSION_WINDOW for 2nd, 3rd, 4th press
-      this.windowDeadline = now + KeyGestureStateMachine.EXTENSION_WINDOW;
+      // CRITICAL: Extend window from THIS keyDown time using settings-driven timing
+      this.windowDeadline = now + this.extensionWindow;
     } else {
       // This keyDown is outside the window - it starts a new sequence
-      // But only clear history if we're not waiting for a 4th press release
       if (!this.waitingForRelease) {
         this.pressHistory.length = 0;
         this.pressLimitReached = false;
       }
       this.keyDownWasWithinWindow = false; // First press of new sequence
 
-      // CRITICAL: Set initial window from THIS keyDown time
-      // Per spec: Window = keyDownTime + INITIAL_WINDOW for 1st press
-      this.windowDeadline = now + KeyGestureStateMachine.INITIAL_WINDOW;
+      // CRITICAL: Set initial window from THIS keyDown time using settings-driven timing
+      this.windowDeadline = now + this.initialWindow;
     }
 
     this.keyDownTime = now;
@@ -213,7 +226,6 @@ class KeyGestureStateMachine {
 
     const now = performance.now();
     const holdDuration = now - this.keyDownTime;
-    const keyDownTime = this.keyDownTime; // Save before clearing
     this.keyDownTime = null;
 
     // If press limit already reached, ignore this key up
@@ -221,17 +233,15 @@ class KeyGestureStateMachine {
       return;
     }
 
-    // If hold exceeded cancel threshold, nullify only this key's recording (do not emit)
+    // If hold exceeded cancel threshold, nullify only this key's recording
     if (holdDuration >= this.settings.cancelThreshold) {
-      // Do not add to pressHistory; this press is ignored.
-      // Reset state for next gesture
       this.pressHistory.length = 0;
       this.windowDeadline = null;
       this.waitingForRelease = false;
       return;
     }
 
-    // Determine press type for this tap based on holdDuration
+    // Determine press type for this tap based on holdDuration (settings-driven)
     let pressType: PressRecord["pressType"] = "normal";
     if (
       holdDuration >= this.settings.longPressMin &&
@@ -246,8 +256,6 @@ class KeyGestureStateMachine {
     }
 
     // Determine if this press counts toward the current sequence
-    // Key insight: Check if keyDOWN was within window, not keyUP
-    // This allows long/super_long presses that extend past the window to still count
     const countsTowardSequence =
       this.pressHistory.length === 0 || // First press always counts
       this.keyDownWasWithinWindow || // KeyDown was within window
@@ -263,46 +271,163 @@ class KeyGestureStateMachine {
     // Record this press (normal/long/super_long)
     this.pressHistory.push({ timestamp: now, pressType });
 
-    // If we've reached the max press count (4th press), resolve immediately after release
+    // If we've reached the max press count (4th press), resolve immediately
     if (this.pressHistory.length >= MAX_PRESS_COUNT) {
       this.pressLimitReached = true;
       this.waitingForRelease = false;
       this.windowDeadline = null;
-      // Clear any pending timers
       if (this.gestureTimer) {
         clearTimeout(this.gestureTimer);
         this.gestureTimer = null;
       }
-      // Resolve immediately (we just got the release, so we can classify it)
       this.resolveGesture();
       return;
     }
-
-    // Window is already set in handleKeyDown() based on keyDown time
-    // per the spec: window starts from keyDown, not keyUp
-
-    // Gesture finalization is handled by interval checker in parent GestureDetector
-    // No need to schedule individual setTimeout per key
   }
 
+  /**
+   * Check if a pending gesture should be finalized
+   * Called periodically by the parent GestureDetector
+   */
+  checkPendingGesture(): void {
+    // If no presses recorded, nothing to do
+    if (this.pressHistory.length === 0) return;
+
+    // If currently pressing a key, don't finalize yet
+    if (this.keyDownTime !== null) return;
+
+    // If waiting for 4th press release, don't finalize
+    if (this.waitingForRelease) return;
+
+    // Check if window has expired
+    const now = performance.now();
+    if (this.windowDeadline !== null && now > this.windowDeadline) {
+      // Window expired, finalize gesture
+      this.windowDeadline = null;
+      this.resolveGesture();
+    }
+  }
+
+  /**
+   * Reset this key's state machine
+   */
   reset(): void {
-    // Reset all state machines
+    this.clearTimers();
+    this.pressHistory.length = 0;
+    this.keyDownTime = null;
+    this.pressLimitReached = false;
+    this.windowDeadline = null;
+    this.waitingForRelease = false;
+    this.keyDownWasWithinWindow = false;
+    this.awaitJailUntil = 0;
+  }
+}
+
+// ============================================================================
+// GestureDetector - Orchestrates all per-key state machines
+// ============================================================================
+export class GestureDetector {
+  private machines: Map<InputKey, KeyGestureStateMachine> = new Map();
+  private _callback: GestureCallback;
+  private listeners: Set<GestureCallback> = new Set();
+  private settings: GestureSettings;
+  private eventQueue: Array<{ type: "down" | "up"; key: string; timestamp: number }> = [];
+  private processingQueue: boolean = false;
+  private checkInterval: ReturnType<typeof setInterval> | null = null;
+  private isStopped: boolean = false;
+
+  constructor(settings: GestureSettings, callback: GestureCallback) {
+    this.settings = settings;
+    this._callback = callback;
+
+    // Create a state machine for each input key
+    for (const key of INPUT_KEYS) {
+      this.machines.set(
+        key,
+        new KeyGestureStateMachine(key, settings, (ev) => {
+          // CRITICAL: Don't emit gestures after destroy
+          if (this.isStopped) return;
+          try {
+            this._callback(ev);
+          } catch {
+            // swallow callback errors
+          }
+          // Notify additional listeners
+          for (const listener of this.listeners) {
+            try {
+              listener(ev);
+            } catch {
+              // swallow listener errors
+            }
+          }
+        })
+      );
+    }
+
+    // Start interval to check for pending gestures (20ms for responsive timing)
+    this.checkInterval = setInterval(() => {
+      this.checkAllPendingGestures();
+    }, 20);
+  }
+
+  /**
+   * Handle key down event
+   */
+  handleKeyDown(key: string): void {
+    this.queueEvent("down", key);
+  }
+
+  /**
+   * Handle key up event
+   */
+  handleKeyUp(key: string): void {
+    this.queueEvent("up", key);
+  }
+
+  /**
+   * Handle mouse button down (for MIDDLE_CLICK)
+   */
+  handleMouseDown(button: string): void {
+    if (button === "MIDDLE_CLICK") {
+      this.queueEvent("down", button);
+    }
+  }
+
+  /**
+   * Handle mouse button up (for MIDDLE_CLICK)
+   */
+  handleMouseUp(button: string): void {
+    if (button === "MIDDLE_CLICK") {
+      this.queueEvent("up", button);
+    }
+  }
+
+  /**
+   * Reset all state machines
+   */
+  reset(): void {
     for (const machine of this.machines.values()) {
       machine.reset();
     }
   }
 
-  /** Replace the callback used by all per-key machines at runtime */
+  /**
+   * Replace the callback used by all per-key machines at runtime
+   */
   setCallback(cb: GestureCallback): void {
     this._callback = cb;
   }
 
-  /** Subscribe to gesture events without replacing the central callback */
+  /**
+   * Subscribe to gesture events without replacing the central callback
+   */
   onGesture(cb: GestureCallback): void {
     this.listeners.add(cb);
   }
 
-  /** Unsubscribe a previously registered gesture listener */
+  /**
+   * Unsubscribe a previously registered gesture listener
+   */
   offGesture(cb: GestureCallback): void {
     this.listeners.delete(cb);
   }
@@ -316,8 +441,14 @@ class KeyGestureStateMachine {
   }
 
   /**
+   * Get current event queue depth (for testing/monitoring)
+   */
+  getQueueDepth(): number {
+    return this.eventQueue.length;
+  }
+
+  /**
    * Check all key state machines for pending gestures that should be finalized
-   * Called every 50ms by interval timer
    */
   private checkAllPendingGestures(): void {
     // CRITICAL: Don't emit any gestures after destroy
@@ -362,6 +493,9 @@ class KeyGestureStateMachine {
     }
   }
 
+  /**
+   * Process a single event
+   */
   private processEvent(event: {
     type: "down" | "up";
     key: string;
@@ -369,26 +503,40 @@ class KeyGestureStateMachine {
   }): void {
     this.processingQueue = true;
 
-    const upperKey = event.key.toUpperCase() as InputKey;
-    const machine = this.machines.get(upperKey);
+    try {
+      const upperKey = event.key.toUpperCase() as InputKey;
+      const machine = this.machines.get(upperKey);
 
-    // Clear interval checker
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
-    }
+      if (machine) {
+        if (event.type === "down") {
+          machine.handleKeyDown();
+        } else {
+          machine.handleKeyUp();
+        }
+      }
 
-    // Restart interval checker
-    this.checkInterval = setInterval(() => {
-      this.checkAllPendingGestures();
-    }, 20);
+      // Process any queued events
+      while (this.eventQueue.length > 0) {
+        const nextEvent = this.eventQueue.shift()!;
+        const nextKey = nextEvent.key.toUpperCase() as InputKey;
+        const nextMachine = this.machines.get(nextKey);
 
-    // Reset all machines
-    for (const machine of this.machines.values()) {
-      machine.reset();
+        if (nextMachine) {
+          if (nextEvent.type === "down") {
+            nextMachine.handleKeyDown();
+          } else {
+            nextMachine.handleKeyUp();
+          }
+        }
+      }
+    } finally {
+      this.processingQueue = false;
     }
   }
 
+  /**
+   * Update gesture settings for all machines
+   */
   updateSettings(settings: GestureSettings): void {
     this.settings = settings;
 
@@ -398,24 +546,38 @@ class KeyGestureStateMachine {
       this.checkInterval = null;
     }
 
-    // Recreate machines with new settings
-    this.machines.clear();
-    for (const key of INPUT_KEYS) {
-      this.machines.set(
-        key,
-        new KeyGestureStateMachine(key, settings, (ev) => {
-          // CRITICAL: Don't emit gestures after destroy
-          if (this.isStopped) return;
-          try {
-            this._callback(ev);
-          } catch {}
-          for (const l of this.listeners) {
-            try {
-              l(ev);
-            } catch {}
-          }
-        })
-      );
+    // Update each machine's settings
+    for (const machine of this.machines.values()) {
+      machine.updateSettings(settings);
     }
+
+    // Restart interval with 20ms check time
+    this.checkInterval = setInterval(() => {
+      this.checkAllPendingGestures();
+    }, 20);
+  }
+
+  /**
+   * Destroy the gesture detector - stop all timers and clear state
+   */
+  destroy(): void {
+    this.isStopped = true;
+
+    // Clear interval
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
+
+    // Reset all machines
+    for (const machine of this.machines.values()) {
+      machine.reset();
+    }
+
+    // Clear event queue
+    this.eventQueue.length = 0;
+
+    // Clear listeners
+    this.listeners.clear();
   }
 }

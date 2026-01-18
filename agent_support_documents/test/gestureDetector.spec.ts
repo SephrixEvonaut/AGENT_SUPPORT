@@ -17,7 +17,7 @@ async function runTest() {
     key: string,
     actions: Array<{ type: "down" | "up"; delay: number }>,
     expected: string,
-    timeout = 1000
+    timeout = 5000 // Increased timeout for longer hold durations
   ) => {
     return new Promise<void>((resolve, reject) => {
       const events: any[] = [];
@@ -58,20 +58,34 @@ async function runTest() {
     });
   };
 
-  // Timing parameters per spec: Window starts from keyDown, not keyUp
-  // Window = keyDownTime + 80 (initial) or keyDownTime + 50 (extension)
-  // So for double: keyDown1=0, keyUp1=short, keyDown2 must be < 80
-  // Need: short + gap < 80 for initial window
-  // For subsequent: need each keyDown within 50ms extension of previous keyDown
-  const short = 30; // <80ms hold = normal press
-  const longHold = 110; // 80-145ms = long press (increased for margin)
-  const superHold = 170; // 146-265ms = super long press (increased for margin)
-  const gap = 20; // Gap between presses (keyUp to next keyDown, increased for margin)
-  // Timeline check: keyDown1=0 → keyUp1=30 → keyDown2=45 (< 80 ✓)
-  //                 window2=45+50=95 → keyUp2=75 → keyDown3=90 (< 95 ✓)
-  //                 window3=90+50=140 → keyUp3=120 → keyDown4=135 (< 140 ✓)
+  // ============================================================================
+  // PRODUCTION TIMING PARAMETERS
+  // ============================================================================
+  // From gesture-manifest.yaml / swtor-vengeance-jugg.json:
+  //   multiPressWindow: 355ms  (initial window for multi-tap detection)
+  //   longPressMin: 520ms      (minimum hold for long press)
+  //   longPressMax: 860ms      (maximum hold for long press)
+  //   superLongMin: 861ms      (minimum hold for super long press)
+  //   superLongMax: 1300ms     (maximum hold for super long press)
+  //   cancelThreshold: 1301ms  (hold longer = cancel gesture)
+  //
+  // Extension window: ~285ms (80% of multiPressWindow)
+  // ============================================================================
 
-  // Run tests sequentially
+  const short = 50; // <520ms hold = normal press
+  const longHold = 650; // 520-860ms = long press (middle of range)
+  const superHold = 1000; // 861-1300ms = super long press (middle of range)
+  const gap = 100; // Gap between presses (comfortable, within 355ms window)
+
+  // Wait times between tests (allow gesture to fully resolve + some buffer)
+  const waitAfterNormal = 500; // Wait for window to expire after normal presses
+  const waitAfterLong = 300; // Less wait needed after long (already waited during hold)
+  const waitAfterSuper = 300; // Less wait needed after super long
+
+  // ============================================================================
+  // SINGLE PRESS TESTS
+  // ============================================================================
+
   await expectGesture(
     "1",
     [
@@ -80,7 +94,8 @@ async function runTest() {
     ],
     "single"
   );
-  await wait(200);
+  await wait(waitAfterNormal);
+
   await expectGesture(
     "2",
     [
@@ -89,7 +104,8 @@ async function runTest() {
     ],
     "single_long"
   );
-  await wait(200);
+  await wait(waitAfterLong);
+
   await expectGesture(
     "3",
     [
@@ -98,7 +114,11 @@ async function runTest() {
     ],
     "single_super_long"
   );
-  await wait(200);
+  await wait(waitAfterSuper);
+
+  // ============================================================================
+  // DOUBLE PRESS TESTS
+  // ============================================================================
 
   await expectGesture(
     "4",
@@ -110,7 +130,8 @@ async function runTest() {
     ],
     "double"
   );
-  await wait(200);
+  await wait(waitAfterNormal);
+
   await expectGesture(
     "5",
     [
@@ -121,7 +142,8 @@ async function runTest() {
     ],
     "double_long"
   );
-  await wait(150);
+  await wait(waitAfterLong);
+
   await expectGesture(
     "6",
     [
@@ -132,7 +154,11 @@ async function runTest() {
     ],
     "double_super_long"
   );
-  await wait(200);
+  await wait(waitAfterSuper);
+
+  // ============================================================================
+  // TRIPLE PRESS TESTS
+  // ============================================================================
 
   await expectGesture(
     "W",
@@ -146,7 +172,8 @@ async function runTest() {
     ],
     "triple"
   );
-  await wait(150);
+  await wait(waitAfterNormal);
+
   await expectGesture(
     "A",
     [
@@ -159,7 +186,8 @@ async function runTest() {
     ],
     "triple_long"
   );
-  await wait(150);
+  await wait(waitAfterLong);
+
   await expectGesture(
     "S",
     [
@@ -172,7 +200,11 @@ async function runTest() {
     ],
     "triple_super_long"
   );
-  await wait(200);
+  await wait(waitAfterSuper);
+
+  // ============================================================================
+  // QUADRUPLE PRESS TESTS
+  // ============================================================================
 
   await expectGesture(
     "D",
@@ -188,7 +220,8 @@ async function runTest() {
     ],
     "quadruple"
   );
-  await wait(150);
+  await wait(waitAfterNormal);
+
   await expectGesture(
     "B",
     [
@@ -203,7 +236,8 @@ async function runTest() {
     ],
     "quadruple_long"
   );
-  await wait(150);
+  await wait(waitAfterLong);
+
   await expectGesture(
     "C",
     [
@@ -224,4 +258,4 @@ async function runTest() {
 
 test("gesture mapping matches expected gestures", async () => {
   await runTest();
-}, 20000);
+}, 60000); // 60 second timeout for all tests (long holds take time)

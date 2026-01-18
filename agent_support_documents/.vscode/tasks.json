@@ -1,0 +1,11 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Jest Tests",
+			"type": "shell",
+			"command": "npx jest --runInBand --detectOpenHandles",
+			"group": "test"
+		}
+	]
+}
