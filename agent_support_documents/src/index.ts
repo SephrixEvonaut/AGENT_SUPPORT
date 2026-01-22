@@ -1,17 +1,36 @@
 // ============================================================================
 // SWTOR MACRO AGENT - Main Entry Point
 // ============================================================================
+//
+// Features:
+// - GCD (Global Cooldown) system emulation
+// - Per-ability cooldown tracking
+// - Gesture fallback (long ↔ super_long)
+// - Concurrent sequence execution
+//
+// ============================================================================
 
 import { GestureDetector } from "./gestureDetector.js";
 import { SequenceExecutor, ExecutionEvent } from "./sequenceExecutor.js";
 import { InputListener, KeyEvent, MouseEvent } from "./inputListener.js";
 import { ProfileLoader, DEFAULT_GESTURE_SETTINGS } from "./profileLoader.js";
-import { MacroProfile, GestureEvent, MacroBinding } from "./types.js";
+import {
+  MacroProfile,
+  GestureEvent,
+  MacroBinding,
+  GestureType,
+  InputKey,
+} from "./types.js";
 import {
   ExecutorFactory,
   IExecutor,
   ExecutorBackend,
 } from "./executorFactory.js";
+import {
+  GCDManager,
+  getGestureFallback,
+  isEmptyBinding,
+} from "./gcdManager.js";
 
 // Event callback for logging
 function createEventCallback(): (event: ExecutionEvent) => void {
@@ -37,6 +56,12 @@ class MacroAgent {
   private preferredProfile: string | null = null;
   private isStopped: boolean = false;
 
+  // GCD Manager for ability cooldown tracking
+  private gcdManager: GCDManager;
+
+  // Lookup table for fast binding access: key -> gesture -> binding
+  private bindingLookup: Map<string, Map<string, MacroBinding>> = new Map();
+
   constructor() {
     this.profileLoader = new ProfileLoader("./profiles");
 
@@ -44,6 +69,9 @@ class MacroAgent {
     this.inputListener = new InputListener((event) => {
       this.handleInputEvent(event);
     });
+
+    // Initialize GCD manager
+    this.gcdManager = new GCDManager();
   }
 
   /**
@@ -57,7 +85,7 @@ class MacroAgent {
         console.log(
           `🔎 RAW: name="${rawName}" state=${state} scanCode=${
             rawEvent.scanCode || "N/A"
-          } vKey=${rawEvent.vKey || "N/A"}`
+          } vKey=${rawEvent.vKey || "N/A"}`,
         );
       });
       console.log("🔧 Debug mode enabled - showing ALL raw key events");
@@ -88,6 +116,55 @@ class MacroAgent {
       this.executor = result.executor;
       this.currentBackend = result.backend;
     }
+
+    // Set up GCD manager to use the executor
+    this.gcdManager.setExecuteCallback((binding) => {
+      if (this.executor) {
+        this.executor.executeDetached(binding);
+      }
+    });
+  }
+
+  /**
+   * Build lookup table for fast binding access
+   */
+  private buildBindingLookup(): void {
+    this.bindingLookup.clear();
+
+    if (!this.profile) return;
+
+    for (const macro of this.profile.macros) {
+      if (!macro.enabled) continue;
+
+      const key = macro.trigger.key;
+      const gesture = macro.trigger.gesture;
+
+      if (!this.bindingLookup.has(key)) {
+        this.bindingLookup.set(key, new Map());
+      }
+
+      this.bindingLookup.get(key)!.set(gesture, macro);
+    }
+  }
+
+  /**
+   * Get binding for a specific key and gesture
+   */
+  private getBinding(
+    key: InputKey,
+    gesture: GestureType,
+  ): MacroBinding | undefined {
+    const keyMap = this.bindingLookup.get(key);
+    if (!keyMap) return undefined;
+    return keyMap.get(gesture);
+  }
+
+  /**
+   * Check if a gesture has a valid (non-empty) binding
+   */
+  private hasValidBinding(key: InputKey, gesture: GestureType): boolean {
+    const binding = this.getBinding(key, gesture);
+    return !isEmptyBinding(binding);
   }
 
   /**
@@ -101,11 +178,11 @@ class MacroAgent {
     if (this.debugMode) {
       if ("key" in event) {
         console.log(
-          `🔍 DEBUG [${event.type}] key="${event.key}" ts=${event.timestamp}`
+          `🔍 DEBUG [${event.type}] key="${event.key}" ts=${event.timestamp}`,
         );
       } else {
         console.log(
-          `🔍 DEBUG [${event.type}] button="${event.button}" ts=${event.timestamp}`
+          `🔍 DEBUG [${event.type}] button="${event.button}" ts=${event.timestamp}`,
         );
       }
     }
@@ -130,31 +207,64 @@ class MacroAgent {
   }
 
   /**
-   * Handle detected gestures
-   * Uses fire-and-forget execution for concurrent macro support
+   * Handle detected gestures with GCD system and fallback logic
    */
   private handleGesture(event: GestureEvent): void {
     // CRITICAL: Block gesture handling after shutdown
     if (this.isStopped) return;
     if (!this.profile || !this.executor) return;
 
-    console.log(`\n🎯 Gesture: ${event.inputKey} → ${event.gesture}`);
+    const { inputKey, gesture } = event;
 
-    // Find matching macro binding
-    const binding = this.profile.macros.find(
-      (m) =>
-        m.trigger.key === event.inputKey &&
-        m.trigger.gesture === event.gesture &&
-        m.enabled
-    );
+    console.log(`\n🎯 Gesture: ${inputKey} → ${gesture}`);
 
-    if (binding) {
-      console.log(`   Matched: "${binding.name}"`);
-      // Use detached execution for concurrent sequences
-      // Different bindings can run at the same time
-      this.executor.executeDetached(binding);
-    } else {
+    // Find matching macro binding (with fallback logic)
+    let binding = this.getBinding(inputKey, gesture);
+    let usedFallback = false;
+
+    // Check if binding is empty/invalid
+    if (isEmptyBinding(binding)) {
+      // Try fallback: long ↔ super_long
+      const fallbackGesture = getGestureFallback(gesture, (g) =>
+        this.hasValidBinding(inputKey, g),
+      );
+
+      if (fallbackGesture) {
+        binding = this.getBinding(inputKey, fallbackGesture);
+        usedFallback = true;
+        console.log(`   Fallback: ${gesture} → ${fallbackGesture}`);
+      }
+    }
+
+    if (!binding || isEmptyBinding(binding)) {
       console.log(`   No macro bound`);
+      return;
+    }
+
+    if (usedFallback) {
+      console.log(`   Matched (via fallback): "${binding.name}"`);
+    } else {
+      console.log(`   Matched: "${binding.name}"`);
+    }
+
+    // Check if this is a GCD binding
+    const gcdAbility = this.gcdManager.detectGCDAbility(binding);
+
+    if (gcdAbility) {
+      // GCD binding - route through GCD manager
+      const result = this.gcdManager.tryExecute(binding);
+
+      if (result.executed) {
+        console.log(`   ⚔️  Executed immediately (${gcdAbility})`);
+      } else if (result.queued) {
+        console.log(`   ⏳ Queued: ${result.reason}`);
+      } else {
+        console.log(`   ❌ Skipped: ${result.reason}`);
+      }
+    } else {
+      // Non-GCD binding - execute immediately (concurrent allowed)
+      console.log(`   ⚡ Non-GCD, executing immediately`);
+      this.executor.executeDetached(binding);
     }
   }
 
@@ -170,10 +280,13 @@ class MacroAgent {
 
     this.profile = profile;
 
+    // Build binding lookup table
+    this.buildBindingLookup();
+
     // Create gesture detector with profile settings
     this.gestureDetector = new GestureDetector(
       profile.gestureSettings || DEFAULT_GESTURE_SETTINGS,
-      (event) => this.handleGesture(event)
+      (event) => this.handleGesture(event),
     );
 
     // If executor supports compiled profile injection, provide compiled profile
@@ -182,7 +295,7 @@ class MacroAgent {
       try {
         (this.executor as any).setCompiledProfile(compiled);
         console.log(
-          `🔧 Compiled profile applied to executor (${compiled.conundrumKeys.size} conundrum keys)`
+          `🔧 Compiled profile applied to executor (${compiled.conundrumKeys.size} conundrum keys)`,
         );
       } catch (err) {
         console.warn("⚠️  Failed to apply compiled profile to executor:", err);
@@ -197,7 +310,7 @@ class MacroAgent {
    */
   async start(backend?: ExecutorBackend): Promise<void> {
     console.log("\n╔════════════════════════════════════════════════════╗");
-    console.log("║       SWTOR MACRO AGENT - Per-Key Gestures         ║");
+    console.log("║       SWTOR MACRO AGENT - GCD System v2.0          ║");
     console.log("╚════════════════════════════════════════════════════╝\n");
 
     // Initialize executor
@@ -227,7 +340,7 @@ class MacroAgent {
           profileToLoad = this.preferredProfile;
         } else {
           console.error(
-            `❌ Specified profile not found: ${this.preferredProfile}`
+            `❌ Specified profile not found: ${this.preferredProfile}`,
           );
           console.log(`   Available: ${profiles.join(", ")}`);
           return;
@@ -235,7 +348,7 @@ class MacroAgent {
       } else {
         // Prefer swtor profile if available, otherwise first
         const swtorProfile = profiles.find((p) =>
-          p.toLowerCase().includes("swtor")
+          p.toLowerCase().includes("swtor"),
         );
         profileToLoad = swtorProfile || profiles[0];
       }
@@ -247,29 +360,41 @@ class MacroAgent {
       }
     }
 
-    // Show loaded macros
+    // Count GCD vs non-GCD macros
+    let gcdCount = 0;
+    let nonGcdCount = 0;
     if (this.profile) {
-      console.log(`\n📋 Loaded macros:`);
       for (const macro of this.profile.macros) {
         if (macro.enabled) {
-          console.log(
-            `   • ${macro.trigger.key} (${macro.trigger.gesture}) → "${macro.name}"`
-          );
+          if (this.gcdManager.detectGCDAbility(macro)) {
+            gcdCount++;
+          } else {
+            nonGcdCount++;
+          }
         }
       }
     }
 
-    // Show constraints and capabilities
-    console.log("\n📏 Sequence Constraints:");
-    console.log("   • Min delay: 25ms");
-    console.log("   • Variance: ≥4ms (max - min)");
-    console.log("   • Max unique keys: 4 per sequence");
-    console.log("   • Max repeats: 6 per key");
-    console.log("   • Max press count: 4 (excess = quadruple, no long)");
+    // Show loaded macros summary
+    if (this.profile) {
+      console.log(
+        `\n📋 Loaded macros: ${gcdCount} GCD, ${nonGcdCount} non-GCD`,
+      );
+      console.log(`   GCD Duration: 1.385s`);
+      console.log(`   Gesture Fallback: long ↔ super_long enabled`);
+    }
 
-    console.log("\n🔀 Concurrency:");
+    // Show constraints and capabilities
+    console.log("\n🔒 GCD System:");
+    console.log("   • GCD abilities queue when GCD active");
+    console.log("   • Most recent gesture wins when GCD ends");
+    console.log("   • Per-ability cooldowns tracked independently");
+    console.log("   • Non-GCD abilities execute immediately");
+
+    console.log("\n📀 Concurrency:");
     console.log("   • Simultaneous keys: YES (all fingers work at once)");
     console.log("   • Concurrent sequences: YES (different macros overlap)");
+    console.log("   • GCD abilities: QUEUED (1.385s lockout)");
 
     // Start listening
     console.log("\n─────────────────────────────────────────────────────");
@@ -284,6 +409,8 @@ class MacroAgent {
     this.isStopped = true;
     // Stop input listener to prevent new events
     this.inputListener.stop();
+    // Shutdown GCD manager
+    this.gcdManager.shutdown();
     // Destroy gesture detector to clear pending timers and block queued events
     if (this.gestureDetector && "destroy" in this.gestureDetector) {
       (this.gestureDetector as any).destroy?.();
@@ -331,7 +458,7 @@ async function main() {
   // Show help
   if (args.includes("--help") || args.includes("-h")) {
     console.log(`
-SWTOR Macro Agent - Per-Key Gesture Detection
+SWTOR Macro Agent - GCD System v2.0
 
 USAGE:
   npm start                    Auto-select best executor
@@ -344,6 +471,12 @@ BACKENDS:
   interception  Interception Driver - Hard to detect (kernel-level)
   mock          Mock executor (no keypresses) - For testing
 
+GCD SYSTEM:
+  • 1.385s global cooldown between GCD abilities
+  • Per-ability cooldowns (e.g., Crushing Blow: 7s, Force Scream: 11s)
+  • Queued sequences execute most-recent-wins when GCD ends
+  • Long ↔ Super Long fallback when one is unbound
+
 EXAMPLES:
   npm start -- --backend=robotjs
   npm start -- --profile=swtor-vengeance-jugg.json
@@ -354,6 +487,7 @@ EXAMPLES:
 OPTIONS:
   --profile=<name>            Load specific profile from profiles/ folder
   --debug                     Show ALL raw key events (for debugging peripherals)
+  DEBUG_GCD=1                 Enable GCD debug logging
 
 ENVIRONMENT:
   MACRO_BACKEND=interception   Set default backend via env var

@@ -38,6 +38,7 @@ import {
   getHumanReleaseDelay,
   getHumanDualKeyOffset,
   getHumanDelay,
+  calculateBufferExtension,
 } from "./humanRandomizer.js";
 
 export interface ExecutionEvent {
@@ -477,7 +478,11 @@ export class SequenceExecutor {
           // Apply delay for next step using human-like randomization
           const delay = step.bufferTier
             ? getHumanBufferDelay(step.bufferTier)
-            : getHumanDelay(step.minDelay || 25, step.maxDelay || 50, "scroll_delay");
+            : getHumanDelay(
+                step.minDelay || 25,
+                step.maxDelay || 50,
+                "scroll_delay"
+              );
           if (delay > 0) await this.sleep(delay);
 
           continue; // Skip keypress logic
@@ -839,7 +844,11 @@ export class SequenceExecutor {
             delay = getHumanBufferDelay(step.bufferTier);
           } else {
             // Fall back to human-like delay with legacy min/max
-            delay = getHumanDelay(step.minDelay, step.maxDelay, "legacy_buffer");
+            delay = getHumanDelay(
+              step.minDelay,
+              step.maxDelay,
+              "legacy_buffer"
+            );
           }
 
           this.callback({
@@ -854,6 +863,7 @@ export class SequenceExecutor {
           console.log(`     ⏱️  Waiting ${delay}ms...`);
 
           // ECHO HITS: Rapid repeat keypresses during buffer phase
+          // WITH: Buffer-tier-aware timing and intelligent buffer extension
           if (
             step.echoHits &&
             step.echoHits.count > 0 &&
@@ -861,10 +871,35 @@ export class SequenceExecutor {
           ) {
             const echoCount = step.echoHits.count;
             const echoWindowMs = step.echoHits.windowMs;
+
+            // Determine buffer tier for echo timing (default to "low" if not specified)
+            const echoBufferTier = step.bufferTier || "low";
+
+            // Calculate if buffer extension is needed
+            const extensionResult = calculateBufferExtension(
+              echoCount,
+              echoBufferTier,
+              delay
+            );
+
+            // Apply buffer extension if needed
+            let effectiveDelay = delay;
+            if (extensionResult.needsExtension) {
+              effectiveDelay = delay + extensionResult.extensionMs;
+              logger.debug(
+                `Buffer extension applied: +${extensionResult.extensionMs}ms ` +
+                  `(${extensionResult.reason}). Effective buffer: ${effectiveDelay}ms`
+              );
+            }
+
+            // Calculate echo interval based on echo window
             const echoIntervalMs = Math.floor(echoWindowMs / (echoCount + 1));
 
             logger.debug(
-              `Echo hits: ${echoCount} repeats of "${step.key}" within ${echoWindowMs}ms (interval ~${echoIntervalMs}ms)`
+              `Echo hits [${echoBufferTier.toUpperCase()}]: ${echoCount} repeats of "${
+                step.key
+              }" ` +
+                `within ${echoWindowMs}ms (interval ~${echoIntervalMs}ms, buffer=${effectiveDelay}ms)`
             );
 
             for (let e = 0; e < echoCount; e++) {
@@ -873,8 +908,9 @@ export class SequenceExecutor {
 
               if (this.isShutdown) return false;
 
-              // Quick tap with human-like hold duration for echo
-              const echoHoldMs = getHumanEchoHitDuration();
+              // Get buffer-tier-aware echo hold duration
+              const echoHoldMs = getHumanEchoHitDuration(echoBufferTier);
+
               try {
                 robot.keyToggle(parsedKey, "down", modifiers);
                 await this.sleep(echoHoldMs);
@@ -893,13 +929,16 @@ export class SequenceExecutor {
               logger.debug(
                 `  Echo ${e + 1}/${echoCount}: "${
                   step.key
-                }" held ${echoHoldMs}ms`
+                }" held ${echoHoldMs}ms [${echoBufferTier}]`
               );
             }
 
-            // Remaining buffer time after echo hits
+            // Calculate remaining buffer time after echo hits
             const echoTimeUsed = echoIntervalMs * echoCount;
-            const remainingBufferAfterEcho = Math.max(0, delay - echoTimeUsed);
+            const remainingBufferAfterEcho = Math.max(
+              0,
+              effectiveDelay - echoTimeUsed
+            );
 
             // Handle held modifier release if applicable
             if (this.heldModifier && i > 0) {

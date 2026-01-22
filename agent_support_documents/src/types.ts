@@ -188,10 +188,35 @@ export interface SequenceStep {
    * Presses occur during buffer, not as extra delays.
    */
   echoHits?: {
-    count: 2 | 3;
+    count: 2 | 3 | 4;
     windowMs: number;
   };
 }
+
+/**
+ * GCD (Global Cooldown) ability identifiers.
+ * Used to track which abilities trigger the 1.385s global cooldown
+ * and their individual cooldown timers.
+ */
+export type GCDAbilityType =
+  | "CRUSHING_BLOW"
+  | "FORCE_SCREAM"
+  | "AEGIS_ASSAULT"
+  | "SWEEPING_SLASH"
+  | "VICIOUS_SLASH"
+  | "BASIC_ATTACK"
+  | "RAVAGE"
+  | "SMASH"
+  | "VICIOUS_THROW"
+  | "SABER_THROW"
+  | "FORCE_CHOKE"
+  | "BACKHAND"
+  | "FORCE_PUSH"
+  | "ELECTRO_STUN"
+  | "SEISMIC_GRENADE"
+  | "INTERCEDE"
+  | "GUARD"
+  | "FORCE_LEAP";
 
 // A macro binding: gesture triggers a sequence
 export interface MacroBinding {
@@ -202,6 +227,17 @@ export interface MacroBinding {
   };
   sequence: SequenceStep[];
   enabled: boolean;
+
+  /**
+   * If this macro contains a GCD ability, specify which one.
+   * This enables the GCD system to:
+   * - Queue sequences during GCD lockout
+   * - Track per-ability cooldowns
+   * - Execute most-recent-wins logic
+   *
+   * If omitted, the system will attempt to detect from the macro name.
+   */
+  gcdAbility?: GCDAbilityType;
 }
 
 // Gesture detection timing settings
