@@ -20,6 +20,10 @@ export class SpecialKeyHandler {
     isExecuting = false;
     pendingQueue = [];
     isShutdown = false;
+    // D key overflow management - 500ms window after D release
+    dReleaseTime = null;
+    dReleased = false; // Hard stop flag
+    D_OVERFLOW_CUTOFF_MS = 500; // 500ms to drain queue after D release
     constructor(config) {
         this.config = config;
     }
@@ -29,8 +33,27 @@ export class SpecialKeyHandler {
     async handleEvent(event) {
         if (this.isShutdown)
             return;
+        // D release MUST be handled immediately - don't queue it!
+        // This sets the hard stop flag RIGHT when D is released
+        if (event.source === "d_release") {
+            this.handleDRelease();
+            return; // Don't queue or process further
+        }
+        // Reset flags when D accumulation starts/restarts
+        if (event.source === "d_retaliate") {
+            // If dReleased is true, D was just pressed again - reset flags
+            if (this.dReleased) {
+                this.dReleased = false;
+                this.dReleaseTime = null;
+            }
+        }
         // Queue events if currently executing
         if (this.isExecuting) {
+            // Don't queue d_retaliate if D was already released
+            if (event.source === "d_retaliate" && this.dReleased) {
+                console.log(`[SpecialKey] R blocked - D already released`);
+                return;
+            }
             this.pendingQueue.push(event);
             return;
         }
@@ -47,6 +70,10 @@ export class SpecialKeyHandler {
             switch (event.source) {
                 case "d_retaliate":
                     await this.processRetaliateOutput(event);
+                    break;
+                case "d_release":
+                    // D key released - start 500ms cutoff timer
+                    this.handleDRelease();
                     break;
                 case "s_group_member":
                     await this.processGroupMemberOutput(event);
@@ -74,20 +101,65 @@ export class SpecialKeyHandler {
         }
     }
     /**
+     * Handle D key release - IMMEDIATELY stop all R processing
+     */
+    handleDRelease() {
+        this.dReleaseTime = performance.now();
+        this.dReleased = true; // Hard stop flag
+        // IMMEDIATELY clear all pending d_retaliate events - don't wait!
+        const beforeCount = this.pendingQueue.length;
+        this.pendingQueue = this.pendingQueue.filter(e => e.source !== "d_retaliate");
+        const cleared = beforeCount - this.pendingQueue.length;
+        console.log(`[SpecialKey] D released - HARD STOP - cleared ${cleared} pending Rs`);
+    }
+    /**
+     * Check if D overflow window has expired
+     */
+    isDOverflowExpired() {
+        // Hard stop when D is released
+        if (this.dReleased)
+            return true;
+        if (this.dReleaseTime === null)
+            return false;
+        const elapsed = performance.now() - this.dReleaseTime;
+        return elapsed > this.D_OVERFLOW_CUTOFF_MS;
+    }
+    /**
      * Process D key Retaliate output
      * Outputs [count] R presses with randomized timing
      */
     async processRetaliateOutput(event) {
+        // Check if D overflow window expired - drop this R press
+        if (this.isDOverflowExpired()) {
+            if (this.config.debug) {
+                console.log(`[SpecialKey] R dropped - 150ms overflow expired`);
+            }
+            // Aggressively clear ALL remaining d_retaliate events from queue
+            const beforeCount = this.pendingQueue.length;
+            this.pendingQueue = this.pendingQueue.filter(e => e.source !== "d_retaliate");
+            const cleared = beforeCount - this.pendingQueue.length;
+            if (cleared > 0 && this.config.debug) {
+                console.log(`[SpecialKey] Cleared ${cleared} overflow R events from queue`);
+            }
+            return;
+        }
         const { keys, timings } = event;
         if (this.config.debug) {
             console.log(`[SpecialKey] Retaliate: ${keys.length} R presses`);
         }
-        // Default timings if not provided
-        const keyDownRange = timings?.keyDownMs ?? [34, 76];
-        const gapRange = timings?.gapMs ?? [51, 63];
+        // Default timings if not provided (faster by ~30ms)
+        const keyDownRange = timings?.keyDownMs ?? [20, 46];
+        const gapRange = timings?.gapMs ?? [25, 40];
         for (let i = 0; i < keys.length; i++) {
-            if (this.isShutdown)
+            // Check overflow BEFORE each R press - stop immediately if expired
+            if (this.isShutdown || this.isDOverflowExpired()) {
+                if (this.isDOverflowExpired() && this.config.debug) {
+                    console.log(`[SpecialKey] R sequence stopped mid-execution - overflow expired`);
+                    // Clear any remaining in queue
+                    this.pendingQueue = this.pendingQueue.filter(e => e.source !== "d_retaliate");
+                }
                 break;
+            }
             // Get randomized timing
             const holdDuration = getHumanDelay(keyDownRange[0], keyDownRange[1], "d_retaliate_hold");
             // Press the key

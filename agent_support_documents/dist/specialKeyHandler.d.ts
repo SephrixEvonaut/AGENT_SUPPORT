@@ -21,6 +21,9 @@ export declare class SpecialKeyHandler {
     private isExecuting;
     private pendingQueue;
     private isShutdown;
+    private dReleaseTime;
+    private dReleased;
+    private readonly D_OVERFLOW_CUTOFF_MS;
     constructor(config: SpecialKeyHandlerConfig);
     /**
      * Handle a special key output event
@@ -30,6 +33,14 @@ export declare class SpecialKeyHandler {
      * Process a single event
      */
     private processEvent;
+    /**
+     * Handle D key release - IMMEDIATELY stop all R processing
+     */
+    private handleDRelease;
+    /**
+     * Check if D overflow window has expired
+     */
+    private isDOverflowExpired;
     /**
      * Process D key Retaliate output
      * Outputs [count] R presses with randomized timing

@@ -10,7 +10,7 @@ export interface SpecialKeyOutputEvent {
         keyDownMs: [number, number];
         gapMs: [number, number];
     };
-    source: "d_retaliate" | "s_group_member" | "c_escape" | "equals_smash";
+    source: "d_retaliate" | "d_release" | "s_group_member" | "c_escape" | "equals_smash";
 }
 export type SpecialKeyCallback = (event: SpecialKeyOutputEvent) => void;
 export declare class OmegaGestureDetector implements IGestureDetector {
@@ -45,11 +45,12 @@ export declare class OmegaGestureDetector implements IGestureDetector {
      */
     private handleDKeyDown;
     /**
-     * Handle D key up - output R for each accumulated count
+     * Handle D key up - signal to special key handler to stop after 980ms
      */
     private handleDKeyUp;
     /**
-     * Handle trigger key during D accumulation
+     * Handle trigger key during D accumulation - immediately output R
+     * Max 7 Rs per 2.85s cycle
      */
     private handleDTriggerKey;
     /**
