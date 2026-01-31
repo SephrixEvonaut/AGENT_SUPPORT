@@ -210,8 +210,8 @@ export class InputListener {
         this.callback = callback;
         this.delegate = new StdinInputListener(callback);
         // Check environment variable to force stdin mode
-        this.forceStdin = process.env.INPUT_MODE === "stdin" ||
-            process.argv.includes("--stdin");
+        this.forceStdin =
+            process.env.INPUT_MODE === "stdin" || process.argv.includes("--stdin");
     }
     /**
      * Enable raw event debugging - shows ALL key events including unrecognized ones

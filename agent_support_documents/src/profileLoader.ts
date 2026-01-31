@@ -62,9 +62,7 @@ export class ProfileLoader {
 
     // Check trigger exists
     if (!binding.trigger) {
-      errors.push(
-        `Binding ${index} "${binding.name}": Missing trigger`,
-      );
+      errors.push(`Binding ${index} "${binding.name}": Missing trigger`);
       return { valid: false, errors, warnings };
     }
 
@@ -76,8 +74,12 @@ export class ProfileLoader {
     }
 
     // Check gesture type (accept both Alpha and Omega gesture types)
-    const isValidAlphaGesture = GESTURE_TYPES.includes(binding.trigger.gesture as GestureType);
-    const isValidOmegaGesture = OMEGA_GESTURE_TYPES.includes(binding.trigger.gesture as OmegaGestureType);
+    const isValidAlphaGesture = GESTURE_TYPES.includes(
+      binding.trigger.gesture as GestureType,
+    );
+    const isValidOmegaGesture = OMEGA_GESTURE_TYPES.includes(
+      binding.trigger.gesture as OmegaGestureType,
+    );
     if (!isValidAlphaGesture && !isValidOmegaGesture) {
       errors.push(
         `Binding ${index} "${binding.name}": Invalid gesture "${binding.trigger.gesture}"`,
@@ -96,9 +98,16 @@ export class ProfileLoader {
         // Scroll steps, timer-only steps, and delay-only steps don't require a key
         const isScrollStep = step.scrollDirection !== undefined;
         const isTimerOnlyStep = step.timer !== undefined;
-        const isDelayOnlyStep = (step.minDelay !== undefined || step.maxDelay !== undefined) && !step.key;
+        const isDelayOnlyStep =
+          (step.minDelay !== undefined || step.maxDelay !== undefined) &&
+          !step.key;
 
-        if (!step.key && !isScrollStep && !isTimerOnlyStep && !isDelayOnlyStep) {
+        if (
+          !step.key &&
+          !isScrollStep &&
+          !isTimerOnlyStep &&
+          !isDelayOnlyStep
+        ) {
           errors.push(
             `Binding ${index} "${binding.name}" step ${i}: Missing key`,
           );
@@ -173,7 +182,7 @@ export class ProfileLoader {
 
       // Count unique keys (only steps with keys)
       const uniqueKeys = new Set(
-        binding.sequence.filter((s) => s.key).map((s) => s.key)
+        binding.sequence.filter((s) => s.key).map((s) => s.key),
       );
       if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
         errors.push(
@@ -283,7 +292,9 @@ export class ProfileLoader {
           enabled: binding.enabled !== false,
           gcdAbility: binding.gcdAbility,
         }));
-        console.log(`📋 Converted ${profile.macros.length} Omega bindings to macros`);
+        console.log(
+          `📋 Converted ${profile.macros.length} Omega bindings to macros`,
+        );
       }
 
       // Ensure macros array exists

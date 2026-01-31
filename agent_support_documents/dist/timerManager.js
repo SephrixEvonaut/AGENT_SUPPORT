@@ -38,17 +38,23 @@ export class TimerManager {
      * @param message Message to speak when timer completes
      */
     startTimer(id, duration, message) {
+        // Validate duration
+        if (!duration || duration <= 0) {
+            console.error(`⏱️ ERROR: Invalid timer duration: ${duration} for '${id}'`);
+            return;
+        }
         // Cancel existing timer with same ID
         if (this.activeTimers.has(id)) {
-            logger.info(`Timer '${id}' already active - restarting`);
+            console.log(`⏱️ Timer '${id}' already active - restarting`);
             this.cancelTimer(id);
         }
         const startTime = Date.now();
-        logger.info(`Starting timer '${id}': ${duration}s → "${message}"`);
+        const durationMs = duration * 1000;
+        console.log(`⏱️ Starting timer '${id}': ${duration}s (${durationMs}ms) → "${message}"`);
         // Create timeout for TTS announcement
         const timeoutHandle = setTimeout(() => {
             this.onTimerComplete(id, message);
-        }, duration * 1000);
+        }, durationMs);
         // Store active timer
         this.activeTimers.set(id, {
             id,
@@ -109,19 +115,19 @@ export class TimerManager {
     onTimerComplete(id, message) {
         // Remove from active timers
         this.activeTimers.delete(id);
-        logger.info(`Timer '${id}' complete - announcing: "${message}"`);
+        console.log(`⏱️ Timer '${id}' complete - announcing: "${message}"`);
         // Speak the message using TTS
         if (this.ttsAvailable && this.sayModule) {
             try {
                 this.sayModule.speak(message);
             }
             catch (error) {
-                logger.error(`TTS error for timer '${id}': ${error instanceof Error ? error.message : String(error)}`);
+                console.error(`TTS error for timer '${id}': ${error instanceof Error ? error.message : String(error)}`);
             }
         }
         else {
             // Fallback: just log the message
-            logger.info(`[TTS DISABLED] Would speak: "${message}"`);
+            console.log(`[TTS DISABLED] Would speak: "${message}"`);
         }
     }
     /**

@@ -25,13 +25,7 @@ import { performance } from "perf_hooks";
 // SPECIAL KEY CONSTANTS
 // ============================================================================
 /** D key trigger keys that count toward Retaliate accumulator */
-const D_TRIGGER_KEYS = new Set([
-    "E",
-    "F",
-    "G",
-    "1",
-    "2",
-]);
+const D_TRIGGER_KEYS = new Set(["E", "F", "G", "1", "2"]);
 /** Temporary input keys only active during D hold */
 const D_ONLY_INPUT_KEYS = new Set(["E", "F", "G"]);
 /** S key group member toggle outputs: key -> [target key, then NUMPAD_SUBTRACT] */
@@ -886,7 +880,9 @@ export class OmegaGestureDetector {
         const holdDuration = now - keyState.startTime;
         this.state.activeKeyDowns.delete(key);
         // Check if toggle activator releasing
-        if (this.state.toggleActive && isToggleKey(key) && this.state.toggleActivator === key) {
+        if (this.state.toggleActive &&
+            isToggleKey(key) &&
+            this.state.toggleActivator === key) {
             this.deactivateToggle();
         }
         // Determine toggle state for this key

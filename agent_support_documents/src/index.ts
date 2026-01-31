@@ -303,8 +303,10 @@ class MacroAgent {
       this.alphaBindingLookup.get(key)!.set(gesture, macro);
 
       // Check if gesture is already an Omega type
-      const isOmegaGesture = OMEGA_GESTURE_TYPES.includes(gesture as OmegaGestureType);
-      
+      const isOmegaGesture = OMEGA_GESTURE_TYPES.includes(
+        gesture as OmegaGestureType,
+      );
+
       if (isOmegaGesture) {
         // Gesture is already Omega - add directly to Omega lookup
         if (!this.omegaBindingLookup.has(key)) {
@@ -533,6 +535,13 @@ class MacroAgent {
    * Execute a macro binding through the GCD system
    */
   private executeBinding(binding: MacroBinding | OmegaMacroBinding): void {
+    // When cooldowns are disabled, bypass GCD system entirely
+    if (!this.perAbilityCooldownsEnabled) {
+      console.log(`   🎯 Executing (cooldowns disabled)`);
+      this.executor!.executeDetached(binding as MacroBinding);
+      return;
+    }
+
     const gcdAbility = this.gcdManager.detectGCDAbility(
       binding as MacroBinding,
     );

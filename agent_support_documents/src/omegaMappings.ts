@@ -17,7 +17,12 @@
 //
 // ============================================================================
 
-import { MacroBinding, SequenceStep, InputKey, GCDAbilityType } from "./types.js";
+import {
+  MacroBinding,
+  SequenceStep,
+  InputKey,
+  GCDAbilityType,
+} from "./types.js";
 import { OmegaGestureType } from "./omegaTypes.js";
 
 // ============================================================================

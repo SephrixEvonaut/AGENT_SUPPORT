@@ -165,20 +165,20 @@ interface InterceptionFFI {
     context: InterceptionContext,
     device: InterceptionDevice,
     buffer: Buffer,
-    size: number
+    size: number,
   ): number;
   interception_send(
     context: InterceptionContext,
     device: InterceptionDevice,
     stroke: Buffer,
-    nstroke: number
+    nstroke: number,
   ): number;
   interception_wait(context: InterceptionContext): InterceptionDevice;
   interception_receive(
     context: InterceptionContext,
     device: InterceptionDevice,
     stroke: Buffer,
-    nstroke: number
+    nstroke: number,
   ): number;
   interception_is_keyboard(device: InterceptionDevice): boolean;
   interception_is_mouse(device: InterceptionDevice): boolean;
@@ -192,7 +192,7 @@ export class InterceptionExecutor {
   private dllPath: string;
 
   constructor(
-    dllPath: string = "C:\\Program Files\\Interception\\library\\x64\\interception.dll"
+    dllPath: string = "C:\\Program Files\\Interception\\library\\x64\\interception.dll",
   ) {
     this.dllPath = dllPath;
   }
@@ -229,7 +229,7 @@ export class InterceptionExecutor {
 
       if (!this.context) {
         console.error(
-          "[InterceptionExecutor] Failed to create context - is driver installed?"
+          "[InterceptionExecutor] Failed to create context - is driver installed?",
         );
         return false;
       }
@@ -251,7 +251,7 @@ export class InterceptionExecutor {
       logger.error("Make sure:");
       logger.error("  1. Interception driver is installed");
       logger.error(
-        "  2. ffi-napi and ref-napi are installed: npm install ffi-napi ref-napi"
+        "  2. ffi-napi and ref-napi are installed: npm install ffi-napi ref-napi",
       );
       logger.error("  3. Running on Windows with proper permissions");
       return false;
@@ -288,7 +288,7 @@ export class InterceptionExecutor {
   private createStrokeBuffer(
     code: number,
     state: number,
-    isExtended: boolean = false
+    isExtended: boolean = false,
   ): Buffer {
     const buffer = Buffer.alloc(8);
     buffer.writeUInt16LE(code, 0); // scan code
@@ -320,13 +320,13 @@ export class InterceptionExecutor {
     const downStroke = this.createStrokeBuffer(
       entry.code,
       KEY_DOWN,
-      isExtended
+      isExtended,
     );
     this.ffi.interception_send(
       this.context,
       this.keyboardDevice,
       downStroke,
-      1
+      1,
     );
 
     // Small delay between down and up (5-15ms, human-like)
@@ -378,11 +378,11 @@ export class InterceptionExecutor {
 
     // Check unique keys constraint (only count steps with keys)
     const uniqueKeys = new Set(
-      sequence.filter((s) => s.key).map((s) => s.key!.toLowerCase())
+      sequence.filter((s) => s.key).map((s) => s.key!.toLowerCase()),
     );
     if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
       errors.push(
-        `Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`
+        `Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`,
       );
     }
 
@@ -396,7 +396,7 @@ export class InterceptionExecutor {
         // Min delay check
         if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
           errors.push(
-            `Step ${step.key || 'unknown'}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`
+            `Step ${step.key || "unknown"}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`,
           );
         }
 
@@ -404,7 +404,7 @@ export class InterceptionExecutor {
         const variance = step.maxDelay - step.minDelay;
         if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
           errors.push(
-            `Step ${step.key || 'unknown'}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`
+            `Step ${step.key || "unknown"}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`,
           );
         }
       }
@@ -426,7 +426,7 @@ export class InterceptionExecutor {
     for (const [key, count] of keyStepCount) {
       if (count > SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY) {
         errors.push(
-          `Key "${key}" used in ${count} steps, maximum is ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} steps per key`
+          `Key "${key}" used in ${count} steps, maximum is ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} steps per key`,
         );
       }
     }
@@ -441,7 +441,7 @@ export class InterceptionExecutor {
   async executeSequence(sequence: SequenceStep[]): Promise<boolean> {
     if (!this.initialized) {
       console.error(
-        "[InterceptionExecutor] Not initialized - call initialize() first"
+        "[InterceptionExecutor] Not initialized - call initialize() first",
       );
       return false;
     }
@@ -455,7 +455,7 @@ export class InterceptionExecutor {
     }
 
     logger.debug(
-      `Executing ${sequence.length} steps (Interception/kernel mode)`
+      `Executing ${sequence.length} steps (Interception/kernel mode)`,
     );
 
     for (let i = 0; i < sequence.length; i++) {
@@ -474,13 +474,17 @@ export class InterceptionExecutor {
       }
 
       logger.debug(
-        `[${i + 1}/${sequence.length}] ${step.key} via Interception`
+        `[${i + 1}/${sequence.length}] ${step.key} via Interception`,
       );
 
       // Delay before next keypress (except after last step)
       const isLastStep = i === sequence.length - 1;
 
-      if (!isLastStep && step.minDelay !== undefined && step.maxDelay !== undefined) {
+      if (
+        !isLastStep &&
+        step.minDelay !== undefined &&
+        step.maxDelay !== undefined
+      ) {
         const delay = this.getRandomDelay(step.minDelay, step.maxDelay);
         await this.preciseSleep(delay);
       }
@@ -530,12 +534,12 @@ export class MockInterceptionExecutor {
   } {
     const errors: string[] = [];
     const uniqueKeys = new Set(
-      sequence.filter((s) => s.key).map((s) => s.key!.toLowerCase())
+      sequence.filter((s) => s.key).map((s) => s.key!.toLowerCase()),
     );
 
     if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
       errors.push(
-        `Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`
+        `Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`,
       );
     }
 
@@ -547,13 +551,13 @@ export class MockInterceptionExecutor {
       if (step.minDelay !== undefined && step.maxDelay !== undefined) {
         if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
           errors.push(
-            `Step ${step.key || 'unknown'}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`
+            `Step ${step.key || "unknown"}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`,
           );
         }
         const variance = step.maxDelay - step.minDelay;
         if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
           errors.push(
-            `Step ${step.key || 'unknown'}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`
+            `Step ${step.key || "unknown"}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`,
           );
         }
       }
@@ -570,7 +574,7 @@ export class MockInterceptionExecutor {
     for (const [key, count] of keyStepCount) {
       if (count > SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY) {
         errors.push(
-          `Key "${key}" used in ${count} steps, maximum is ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} steps per key`
+          `Key "${key}" used in ${count} steps, maximum is ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} steps per key`,
         );
       }
     }

@@ -108,7 +108,7 @@ export class SpecialKeyHandler {
         this.dReleased = true; // Hard stop flag
         // IMMEDIATELY clear all pending d_retaliate events - don't wait!
         const beforeCount = this.pendingQueue.length;
-        this.pendingQueue = this.pendingQueue.filter(e => e.source !== "d_retaliate");
+        this.pendingQueue = this.pendingQueue.filter((e) => e.source !== "d_retaliate");
         const cleared = beforeCount - this.pendingQueue.length;
         console.log(`[SpecialKey] D released - HARD STOP - cleared ${cleared} pending Rs`);
     }
@@ -136,7 +136,7 @@ export class SpecialKeyHandler {
             }
             // Aggressively clear ALL remaining d_retaliate events from queue
             const beforeCount = this.pendingQueue.length;
-            this.pendingQueue = this.pendingQueue.filter(e => e.source !== "d_retaliate");
+            this.pendingQueue = this.pendingQueue.filter((e) => e.source !== "d_retaliate");
             const cleared = beforeCount - this.pendingQueue.length;
             if (cleared > 0 && this.config.debug) {
                 console.log(`[SpecialKey] Cleared ${cleared} overflow R events from queue`);
@@ -156,7 +156,7 @@ export class SpecialKeyHandler {
                 if (this.isDOverflowExpired() && this.config.debug) {
                     console.log(`[SpecialKey] R sequence stopped mid-execution - overflow expired`);
                     // Clear any remaining in queue
-                    this.pendingQueue = this.pendingQueue.filter(e => e.source !== "d_retaliate");
+                    this.pendingQueue = this.pendingQueue.filter((e) => e.source !== "d_retaliate");
                 }
                 break;
             }

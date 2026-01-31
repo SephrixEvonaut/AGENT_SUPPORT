@@ -29,7 +29,7 @@ const DEFAULT_SETTINGS: GestureSettings = {
 async function simulateKeyPress(
   detector: GestureDetector,
   key: string,
-  holdDurationMs: number = 30
+  holdDurationMs: number = 30,
 ): Promise<void> {
   detector.handleKeyDown(key);
   await sleep(holdDurationMs);
@@ -44,7 +44,7 @@ async function simulateMultiTap(
   key: string,
   count: number,
   tapDurationMs: number = 15,
-  gapMs: number = 20
+  gapMs: number = 20,
 ): Promise<void> {
   for (let i = 0; i < count; i++) {
     detector.handleKeyDown(key);

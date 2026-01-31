@@ -441,6 +441,12 @@ class MacroAgent {
      * Execute a macro binding through the GCD system
      */
     executeBinding(binding) {
+        // When cooldowns are disabled, bypass GCD system entirely
+        if (!this.perAbilityCooldownsEnabled) {
+            console.log(`   🎯 Executing (cooldowns disabled)`);
+            this.executor.executeDetached(binding);
+            return;
+        }
         const gcdAbility = this.gcdManager.detectGCDAbility(binding);
         if (gcdAbility) {
             const result = this.gcdManager.tryExecute(binding);

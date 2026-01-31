@@ -58,8 +58,12 @@ export class ProfileLoader {
                 // Scroll steps, timer-only steps, and delay-only steps don't require a key
                 const isScrollStep = step.scrollDirection !== undefined;
                 const isTimerOnlyStep = step.timer !== undefined;
-                const isDelayOnlyStep = (step.minDelay !== undefined || step.maxDelay !== undefined) && !step.key;
-                if (!step.key && !isScrollStep && !isTimerOnlyStep && !isDelayOnlyStep) {
+                const isDelayOnlyStep = (step.minDelay !== undefined || step.maxDelay !== undefined) &&
+                    !step.key;
+                if (!step.key &&
+                    !isScrollStep &&
+                    !isTimerOnlyStep &&
+                    !isDelayOnlyStep) {
                     errors.push(`Binding ${index} "${binding.name}" step ${i}: Missing key`);
                 }
                 // Only validate minDelay/maxDelay if bufferTier is NOT provided

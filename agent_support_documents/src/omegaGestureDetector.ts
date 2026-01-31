@@ -42,13 +42,7 @@ import { performance } from "perf_hooks";
 // ============================================================================
 
 /** D key trigger keys that count toward Retaliate accumulator */
-const D_TRIGGER_KEYS = new Set<string>([
-  "E",
-  "F",
-  "G",
-  "1",
-  "2",
-]);
+const D_TRIGGER_KEYS = new Set<string>(["E", "F", "G", "1", "2"]);
 
 /** Temporary input keys only active during D hold */
 const D_ONLY_INPUT_KEYS = new Set<string>(["E", "F", "G"]);
@@ -87,16 +81,16 @@ const KEY_6_TOGGLE_THRESHOLD = 320;
 interface DKeyAccumulatorState {
   active: boolean;
   startTime: number;
-  count: number;  // Total count for logging
+  count: number; // Total count for logging
   pendingROutputs: number;
   // Cycle tracking: max 7 Rs per 2.85s cycle
-  cycleStartTime: number;  // When current 7-R cycle started
-  cycleCount: number;       // Rs sent in current cycle (max 7)
+  cycleStartTime: number; // When current 7-R cycle started
+  cycleCount: number; // Rs sent in current cycle (max 7)
 }
 
 /** D accumulator constants */
 const D_MAX_RS_PER_CYCLE = 7;
-const D_CYCLE_REFRESH_MS = 2850;  // 2.85 seconds
+const D_CYCLE_REFRESH_MS = 2850; // 2.85 seconds
 
 /**
  * S key group member toggle state
@@ -187,7 +181,12 @@ export interface SpecialKeyOutputEvent {
     keyDownMs: [number, number];
     gapMs: [number, number];
   };
-  source: "d_retaliate" | "d_release" | "s_group_member" | "c_escape" | "equals_smash";
+  source:
+    | "d_retaliate"
+    | "d_release"
+    | "s_group_member"
+    | "c_escape"
+    | "equals_smash";
 }
 
 export type SpecialKeyCallback = (event: SpecialKeyOutputEvent) => void;
@@ -330,7 +329,7 @@ export class OmegaGestureDetector implements IGestureDetector {
       startTime: now,
       count: 0,
       pendingROutputs: 0,
-      cycleStartTime: now,  // Start first 7-R cycle
+      cycleStartTime: now, // Start first 7-R cycle
       cycleCount: 0,
     };
 
@@ -340,7 +339,9 @@ export class OmegaGestureDetector implements IGestureDetector {
       longFired: false,
     });
 
-    console.log("🔴 D key: Accumulation phase started (max 7 Rs per 2.85s cycle)");
+    console.log(
+      "🔴 D key: Accumulation phase started (max 7 Rs per 2.85s cycle)",
+    );
   }
 
   /**
@@ -351,17 +352,15 @@ export class OmegaGestureDetector implements IGestureDetector {
 
     const count = this.state.dKey.count;
 
-    console.log(
-      `🔴 D key: Accumulation complete - ${count} R triggers sent`,
-    );
+    console.log(`🔴 D key: Accumulation complete - ${count} R triggers sent`);
 
     // Signal special key handler to clear overflow after 500ms
     if (this.specialKeyCallback) {
       this.specialKeyCallback({
         type: "direct_output",
-        keys: [],  // Empty keys signals D release
+        keys: [], // Empty keys signals D release
         timings: { keyDownMs: [0, 0], gapMs: [0, 0] },
-        source: "d_release",  // Special source to trigger 500ms cutoff
+        source: "d_release", // Special source to trigger 500ms cutoff
       });
     }
 
@@ -387,20 +386,24 @@ export class OmegaGestureDetector implements IGestureDetector {
     if (!D_TRIGGER_KEYS.has(key)) return false;
 
     const now = performance.now();
-    
+
     // Check if we need to start a new cycle (2.85s elapsed)
     const cycleElapsed = now - this.state.dKey.cycleStartTime;
     if (cycleElapsed >= D_CYCLE_REFRESH_MS) {
       // Reset cycle
       this.state.dKey.cycleStartTime = now;
       this.state.dKey.cycleCount = 0;
-      console.log(`   D accumulator: New 7-R cycle started (held ${Math.round(cycleElapsed)}ms)`);
+      console.log(
+        `   D accumulator: New 7-R cycle started (held ${Math.round(cycleElapsed)}ms)`,
+      );
     }
-    
+
     // Check if we've hit the 7 R limit for this cycle
     if (this.state.dKey.cycleCount >= D_MAX_RS_PER_CYCLE) {
-      console.log(`   D accumulator: Cycle limit reached (7 Rs) - ignoring ${key}`);
-      return true;  // Still consume the key, just don't output R
+      console.log(
+        `   D accumulator: Cycle limit reached (7 Rs) - ignoring ${key}`,
+      );
+      return true; // Still consume the key, just don't output R
     }
 
     this.state.dKey.count++;
@@ -415,8 +418,8 @@ export class OmegaGestureDetector implements IGestureDetector {
         type: "direct_output",
         keys: ["R"],
         timings: {
-          keyDownMs: [20, 46],  // Reduced from [34, 76] - faster hold
-          gapMs: [25, 40],       // Reduced from [51, 63] - faster gap
+          keyDownMs: [20, 46], // Reduced from [34, 76] - faster hold
+          gapMs: [25, 40], // Reduced from [51, 63] - faster gap
         },
         source: "d_retaliate",
       });
@@ -1151,7 +1154,11 @@ export class OmegaGestureDetector implements IGestureDetector {
     this.state.activeKeyDowns.delete(key);
 
     // Check if toggle activator releasing
-    if (this.state.toggleActive && isToggleKey(key) && this.state.toggleActivator === key) {
+    if (
+      this.state.toggleActive &&
+      isToggleKey(key) &&
+      this.state.toggleActivator === key
+    ) {
       this.deactivateToggle();
     }
 

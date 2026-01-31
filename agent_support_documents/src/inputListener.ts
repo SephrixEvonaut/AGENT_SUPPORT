@@ -155,7 +155,7 @@ export class GlobalInputListener implements IInputListener {
    * Set a callback to receive ALL raw key events (for debugging peripherals)
    */
   setRawEventCallback(
-    cb: (rawName: string, state: string, rawEvent: any) => void
+    cb: (rawName: string, state: string, rawEvent: any) => void,
   ): void {
     this.rawEventCallback = cb;
   }
@@ -165,9 +165,8 @@ export class GlobalInputListener implements IInputListener {
 
     try {
       // Dynamic import of node-global-key-listener (optional dependency)
-      const { GlobalKeyboardListener } = await import(
-        "node-global-key-listener"
-      );
+      const { GlobalKeyboardListener } =
+        await import("node-global-key-listener");
 
       this.listener = new GlobalKeyboardListener();
 
@@ -200,7 +199,7 @@ export class GlobalInputListener implements IInputListener {
 
       this.isListening = true;
       console.log(
-        "\n🎧 Global Input Listener started (node-global-key-listener)"
+        "\n🎧 Global Input Listener started (node-global-key-listener)",
       );
       console.log("   Listening for global keyboard events...");
       console.log("   Recognized keys:", INPUT_KEYS.slice(0, 18).join(", "));
@@ -209,12 +208,12 @@ export class GlobalInputListener implements IInputListener {
       console.error("❌ Failed to start global listener:", error.message);
       console.log("");
       console.log(
-        "📦 To enable global key capture, install node-global-key-listener:"
+        "📦 To enable global key capture, install node-global-key-listener:",
       );
       console.log("   npm install node-global-key-listener");
       console.log("");
       console.log(
-        "⚠️  Falling back to stdin mode (only works when terminal is focused)"
+        "⚠️  Falling back to stdin mode (only works when terminal is focused)",
       );
       console.log("");
 
@@ -249,7 +248,7 @@ export type ListenerMode = "auto" | "global" | "stdin";
 
 export async function createInputListener(
   callback: InputCallback,
-  mode: ListenerMode = "auto"
+  mode: ListenerMode = "auto",
 ): Promise<IInputListener> {
   if (mode === "stdin") {
     return new StdinInputListener(callback);
@@ -263,7 +262,7 @@ export async function createInputListener(
     } catch {
       if (mode === "global") {
         console.warn(
-          "⚠️  node-global-key-listener not available, install with:"
+          "⚠️  node-global-key-listener not available, install with:",
         );
         console.warn("   npm install node-global-key-listener");
       }
@@ -288,15 +287,15 @@ export class InputListener implements IInputListener {
     this.callback = callback;
     this.delegate = new StdinInputListener(callback);
     // Check environment variable to force stdin mode
-    this.forceStdin = process.env.INPUT_MODE === "stdin" || 
-                      process.argv.includes("--stdin");
+    this.forceStdin =
+      process.env.INPUT_MODE === "stdin" || process.argv.includes("--stdin");
   }
 
   /**
    * Enable raw event debugging - shows ALL key events including unrecognized ones
    */
   setRawEventCallback(
-    cb: (rawName: string, state: string, rawEvent: any) => void
+    cb: (rawName: string, state: string, rawEvent: any) => void,
   ): void {
     this.rawEventCallback = cb;
   }

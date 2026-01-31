@@ -478,14 +478,17 @@ export class SequenceExecutor {
         // TIMER-ONLY STEP HANDLING (NEW for Omega system)
         // ================================================================
         if (step.timer && !step.key && !step.scrollDirection) {
+          // Support both 'durationSeconds' (code) and 'duration' (JSON profile)
+          const timerDuration = step.timer.durationSeconds ?? (step.timer as any).duration;
+          
           // This is a timer-only step - start timer and continue
-          logger.debug(
-            `Timer step: ${step.timer.id} (${step.timer.durationSeconds}s) → "${step.timer.message}"`,
+          console.log(
+            `⏱️ Timer-only step: id=${step.timer.id}, duration=${timerDuration}s, msg="${step.timer.message}"`,
           );
 
           this.timerManager.startTimer(
             step.timer.id,
-            step.timer.durationSeconds,
+            timerDuration,
             step.timer.message,
           );
 
@@ -554,12 +557,14 @@ export class SequenceExecutor {
 
         // If step has BOTH key and timer, start the timer first
         if (step.timer && step.key) {
+          // Support both 'durationSeconds' (code) and 'duration' (JSON profile)
+          const timerDuration = step.timer.durationSeconds ?? (step.timer as any).duration;
           logger.debug(
-            `Key+Timer step: ${step.key} + timer ${step.timer.id} (${step.timer.durationSeconds}s)`,
+            `Key+Timer step: ${step.key} + timer ${step.timer.id} (${timerDuration}s)`,
           );
           this.timerManager.startTimer(
             step.timer.id,
-            step.timer.durationSeconds,
+            timerDuration,
             step.timer.message,
           );
         }

@@ -289,12 +289,12 @@ export class InterceptionExecutor {
             if (step.minDelay !== undefined && step.maxDelay !== undefined) {
                 // Min delay check
                 if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
-                    errors.push(`Step ${step.key || 'unknown'}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`);
+                    errors.push(`Step ${step.key || "unknown"}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`);
                 }
                 // Variance check
                 const variance = step.maxDelay - step.minDelay;
                 if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
-                    errors.push(`Step ${step.key || 'unknown'}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`);
+                    errors.push(`Step ${step.key || "unknown"}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`);
                 }
             }
             // Count steps per key (only if key exists)
@@ -348,7 +348,9 @@ export class InterceptionExecutor {
             logger.debug(`[${i + 1}/${sequence.length}] ${step.key} via Interception`);
             // Delay before next keypress (except after last step)
             const isLastStep = i === sequence.length - 1;
-            if (!isLastStep && step.minDelay !== undefined && step.maxDelay !== undefined) {
+            if (!isLastStep &&
+                step.minDelay !== undefined &&
+                step.maxDelay !== undefined) {
                 const delay = this.getRandomDelay(step.minDelay, step.maxDelay);
                 await this.preciseSleep(delay);
             }
@@ -398,11 +400,11 @@ export class MockInterceptionExecutor {
             // Skip validation for steps without timing
             if (step.minDelay !== undefined && step.maxDelay !== undefined) {
                 if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
-                    errors.push(`Step ${step.key || 'unknown'}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`);
+                    errors.push(`Step ${step.key || "unknown"}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`);
                 }
                 const variance = step.maxDelay - step.minDelay;
                 if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
-                    errors.push(`Step ${step.key || 'unknown'}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`);
+                    errors.push(`Step ${step.key || "unknown"}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`);
                 }
             }
             // Count steps per key (only if key exists)

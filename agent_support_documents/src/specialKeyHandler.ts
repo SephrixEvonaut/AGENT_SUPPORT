@@ -19,7 +19,7 @@ import { getHumanDelay, getHumanKeyDownDuration } from "./humanRandomizer.js";
  */
 export type KeyPressCallback = (
   key: string,
-  holdDurationMs: number
+  holdDurationMs: number,
 ) => Promise<void>;
 
 /**
@@ -42,11 +42,11 @@ export class SpecialKeyHandler {
   private isExecuting: boolean = false;
   private pendingQueue: SpecialKeyOutputEvent[] = [];
   private isShutdown: boolean = false;
-  
+
   // D key overflow management - 500ms window after D release
   private dReleaseTime: number | null = null;
-  private dReleased: boolean = false;  // Hard stop flag
-  private readonly D_OVERFLOW_CUTOFF_MS = 500;  // 500ms to drain queue after D release
+  private dReleased: boolean = false; // Hard stop flag
+  private readonly D_OVERFLOW_CUTOFF_MS = 500; // 500ms to drain queue after D release
 
   constructor(config: SpecialKeyHandlerConfig) {
     this.config = config;
@@ -62,7 +62,7 @@ export class SpecialKeyHandler {
     // This sets the hard stop flag RIGHT when D is released
     if (event.source === "d_release") {
       this.handleDRelease();
-      return;  // Don't queue or process further
+      return; // Don't queue or process further
     }
 
     // Reset flags when D accumulation starts/restarts
@@ -135,14 +135,18 @@ export class SpecialKeyHandler {
    */
   private handleDRelease(): void {
     this.dReleaseTime = performance.now();
-    this.dReleased = true;  // Hard stop flag
-    
+    this.dReleased = true; // Hard stop flag
+
     // IMMEDIATELY clear all pending d_retaliate events - don't wait!
     const beforeCount = this.pendingQueue.length;
-    this.pendingQueue = this.pendingQueue.filter(e => e.source !== "d_retaliate");
+    this.pendingQueue = this.pendingQueue.filter(
+      (e) => e.source !== "d_retaliate",
+    );
     const cleared = beforeCount - this.pendingQueue.length;
-    
-    console.log(`[SpecialKey] D released - HARD STOP - cleared ${cleared} pending Rs`);
+
+    console.log(
+      `[SpecialKey] D released - HARD STOP - cleared ${cleared} pending Rs`,
+    );
   }
 
   /**
@@ -151,9 +155,9 @@ export class SpecialKeyHandler {
   private isDOverflowExpired(): boolean {
     // Hard stop when D is released
     if (this.dReleased) return true;
-    
+
     if (this.dReleaseTime === null) return false;
-    
+
     const elapsed = performance.now() - this.dReleaseTime;
     return elapsed > this.D_OVERFLOW_CUTOFF_MS;
   }
@@ -162,7 +166,9 @@ export class SpecialKeyHandler {
    * Process D key Retaliate output
    * Outputs [count] R presses with randomized timing
    */
-  private async processRetaliateOutput(event: SpecialKeyOutputEvent): Promise<void> {
+  private async processRetaliateOutput(
+    event: SpecialKeyOutputEvent,
+  ): Promise<void> {
     // Check if D overflow window expired - drop this R press
     if (this.isDOverflowExpired()) {
       if (this.config.debug) {
@@ -170,10 +176,14 @@ export class SpecialKeyHandler {
       }
       // Aggressively clear ALL remaining d_retaliate events from queue
       const beforeCount = this.pendingQueue.length;
-      this.pendingQueue = this.pendingQueue.filter(e => e.source !== "d_retaliate");
+      this.pendingQueue = this.pendingQueue.filter(
+        (e) => e.source !== "d_retaliate",
+      );
       const cleared = beforeCount - this.pendingQueue.length;
       if (cleared > 0 && this.config.debug) {
-        console.log(`[SpecialKey] Cleared ${cleared} overflow R events from queue`);
+        console.log(
+          `[SpecialKey] Cleared ${cleared} overflow R events from queue`,
+        );
       }
       return;
     }
@@ -192,21 +202,31 @@ export class SpecialKeyHandler {
       // Check overflow BEFORE each R press - stop immediately if expired
       if (this.isShutdown || this.isDOverflowExpired()) {
         if (this.isDOverflowExpired() && this.config.debug) {
-          console.log(`[SpecialKey] R sequence stopped mid-execution - overflow expired`);
+          console.log(
+            `[SpecialKey] R sequence stopped mid-execution - overflow expired`,
+          );
           // Clear any remaining in queue
-          this.pendingQueue = this.pendingQueue.filter(e => e.source !== "d_retaliate");
+          this.pendingQueue = this.pendingQueue.filter(
+            (e) => e.source !== "d_retaliate",
+          );
         }
         break;
       }
 
       // Get randomized timing
-      const holdDuration = getHumanDelay(keyDownRange[0], keyDownRange[1], "d_retaliate_hold");
+      const holdDuration = getHumanDelay(
+        keyDownRange[0],
+        keyDownRange[1],
+        "d_retaliate_hold",
+      );
 
       // Press the key
       await this.config.onKeyPress("R", holdDuration);
 
       if (this.config.debug) {
-        console.log(`   R press ${i + 1}/${keys.length}: held ${holdDuration}ms`);
+        console.log(
+          `   R press ${i + 1}/${keys.length}: held ${holdDuration}ms`,
+        );
       }
 
       // Wait for gap before next press (except for last press)
@@ -221,7 +241,9 @@ export class SpecialKeyHandler {
    * Process S key Group Member output
    * Outputs target key followed by NUMPAD_SUBTRACT
    */
-  private async processGroupMemberOutput(event: SpecialKeyOutputEvent): Promise<void> {
+  private async processGroupMemberOutput(
+    event: SpecialKeyOutputEvent,
+  ): Promise<void> {
     const { keys } = event;
 
     if (this.config.debug) {
@@ -248,7 +270,9 @@ export class SpecialKeyHandler {
   /**
    * Process C key ESCAPE output
    */
-  private async processEscapeOutput(event: SpecialKeyOutputEvent): Promise<void> {
+  private async processEscapeOutput(
+    event: SpecialKeyOutputEvent,
+  ): Promise<void> {
     if (this.config.debug) {
       console.log(`[SpecialKey] Escape: ESCAPE`);
     }
@@ -260,7 +284,9 @@ export class SpecialKeyHandler {
   /**
    * Process = key Smash output (handled via gesture, but could be direct)
    */
-  private async processSmashOutput(event: SpecialKeyOutputEvent): Promise<void> {
+  private async processSmashOutput(
+    event: SpecialKeyOutputEvent,
+  ): Promise<void> {
     if (this.config.debug) {
       console.log(`[SpecialKey] Smash: ] (via gesture binding)`);
     }
@@ -295,7 +321,7 @@ export class SpecialKeyHandler {
  * Create a special key handler with RobotJS integration
  */
 export async function createSpecialKeyHandler(
-  debug?: boolean
+  debug?: boolean,
 ): Promise<SpecialKeyHandler> {
   // Try to import robotjs
   let robot: any;
