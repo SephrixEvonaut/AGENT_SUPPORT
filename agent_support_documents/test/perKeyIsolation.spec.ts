@@ -84,9 +84,9 @@ describe("Per-Key State Machine Isolation", () => {
     // Each key gets its own KeyGestureStateMachine instance
     // Machines stored in Map<InputKey, KeyGestureStateMachine>
 
-    expect(INPUT_KEYS.length).toBe(24);
+    expect(INPUT_KEYS.length).toBe(28);
 
-    // All 23 keys should be recognized
+    // All 28 keys should be recognized (including E, F, G, NUMPAD8 for Omega D-key triggers)
     const expectedKeys = [
       "W",
       "A",
@@ -100,6 +100,11 @@ describe("Per-Key State Machine Isolation", () => {
       "C",
       "H",
       "P",
+      // D-key only input keys (Omega system)
+      "E",
+      "F",
+      "G",
+      // Function key
       "F2",
       "1",
       "2",
@@ -112,6 +117,8 @@ describe("Per-Key State Machine Isolation", () => {
       "9",
       "=",
       "MIDDLE_CLICK",
+      // Numpad for D-key triggers
+      "NUMPAD8",
     ];
     expect(INPUT_KEYS).toEqual(expectedKeys);
   });

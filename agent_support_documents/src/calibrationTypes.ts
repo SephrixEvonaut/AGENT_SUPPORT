@@ -244,6 +244,7 @@ export interface CalibrationConfig {
   minThresholdGapMs: number; // Minimum gap between threshold ranges (default: 10)
   quickMode: boolean; // Quick mode uses fewer samples (default: false)
   quickModeSamples: number; // Samples in quick mode (default: 5)
+  preselectedKeys?: string[]; // Keys to calibrate (optional, prompts if not provided)
 }
 
 export const DEFAULT_CALIBRATION_CONFIG: CalibrationConfig = {

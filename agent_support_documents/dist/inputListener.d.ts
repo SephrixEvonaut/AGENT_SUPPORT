@@ -25,6 +25,7 @@ export declare class StdinInputListener implements IInputListener {
 export declare class GlobalInputListener implements IInputListener {
     private callback;
     private isListening;
+    private isStopped;
     private listener;
     private rawEventCallback;
     constructor(callback: InputCallback);
@@ -43,6 +44,7 @@ export declare class InputListener implements IInputListener {
     private callback;
     private initialized;
     private rawEventCallback;
+    private forceStdin;
     constructor(callback: InputCallback);
     /**
      * Enable raw event debugging - shows ALL key events including unrecognized ones
@@ -52,3 +54,4 @@ export declare class InputListener implements IInputListener {
     stop(): void;
     isActive(): boolean;
 }
+//# sourceMappingURL=inputListener.d.ts.map

@@ -1,10 +1,121 @@
 // ============================================================================
-// SWTOR MACRO AGENT - Main Entry Point
+// SWTOR MACRO AGENT - Main Entry Point (with Alpha/Omega System Selection)
+// ============================================================================
+//
+// Features:
+// - GCD (Global Cooldown) system emulation (1.275s for Omega)
+// - Per-ability cooldown tracking
+// - Gesture fallback (long ↔ super_long for Alpha)
+// - Concurrent sequence execution
+// - Per-key calibrated gesture thresholds
+// - Hot-reload calibration server
+// - NEW: Alpha (12-gesture) vs Omega (4-gesture) system selection
+//
 // ============================================================================
 import { GestureDetector } from "./gestureDetector.js";
+import { createOmegaGestureDetector, } from "./omegaGestureDetector.js";
 import { InputListener } from "./inputListener.js";
 import { ProfileLoader, DEFAULT_GESTURE_SETTINGS } from "./profileLoader.js";
+import { OMEGA_GESTURE_TYPES, } from "./omegaTypes.js";
 import { ExecutorFactory, } from "./executorFactory.js";
+import { GCDManager, getGestureFallback, isEmptyBinding, } from "./gcdManager.js";
+import { createSpecialKeyHandler, } from "./specialKeyHandler.js";
+// NEW: Calibration server imports
+import { getCalibrationServer, stopCalibrationServer, } from "./calibrationServer.js";
+// For interactive prompts
+import * as readline from "readline";
+// ============================================================================
+// SYSTEM SELECTION UTILITIES
+// ============================================================================
+/**
+ * Prompt user to select gesture system (Alpha or Omega)
+ */
+async function selectGestureSystem() {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+    return new Promise((resolve) => {
+        console.log("\n╔════════════════════════════════════════════════════════╗");
+        console.log("║           SELECT GESTURE DETECTION SYSTEM              ║");
+        console.log("╠════════════════════════════════════════════════════════╣");
+        console.log("║                                                        ║");
+        console.log("║  [1] ALPHA - 12 gestures (original system)             ║");
+        console.log("║      • single, double, triple, quadruple               ║");
+        console.log("║      • + long and super_long variants                  ║");
+        console.log("║      • Multi-tap detection with elongating window      ║");
+        console.log("║                                                        ║");
+        console.log("║  [2] OMEGA - 4 gestures (streamlined system)           ║");
+        console.log("║      • quick, long, quick_toggle, long_toggle          ║");
+        console.log("║      • Long fires IMMEDIATELY on threshold cross       ║");
+        console.log("║      • W/Y toggle keys for modifier state              ║");
+        console.log("║      • Per-key calibrated thresholds                   ║");
+        console.log("║                                                        ║");
+        console.log("╚════════════════════════════════════════════════════════╝\n");
+        const askQuestion = () => {
+            rl.question("Select system [1/2] (default: 1): ", (answer) => {
+                const trimmed = answer.trim().toLowerCase();
+                if (trimmed === "" || trimmed === "1" || trimmed === "alpha") {
+                    rl.close();
+                    resolve("alpha");
+                }
+                else if (trimmed === "2" || trimmed === "omega") {
+                    rl.close();
+                    resolve("omega");
+                }
+                else {
+                    console.log("Invalid selection. Please enter 1 or 2.");
+                    askQuestion();
+                }
+            });
+        };
+        askQuestion();
+    });
+}
+/**
+ * Prompt user to enable/disable per-ability cooldown tracking
+ */
+async function selectCooldownMode() {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+    return new Promise((resolve) => {
+        console.log("\n╔════════════════════════════════════════════════════════╗");
+        console.log("║         PER-ABILITY COOLDOWN TRACKING                  ║");
+        console.log("╠════════════════════════════════════════════════════════╣");
+        console.log("║                                                        ║");
+        console.log("║  [Y] YES - Track individual ability cooldowns          ║");
+        console.log("║      • Crushing Blow: 7s, Force Scream: 11s, etc.      ║");
+        console.log("║      • Abilities blocked until cooldown expires        ║");
+        console.log("║      • P key resets short cooldowns (<20s)             ║");
+        console.log("║                                                        ║");
+        console.log("║  [N] NO - GCD only mode (1.275s between abilities)     ║");
+        console.log("║      • No per-ability cooldown tracking                ║");
+        console.log("║      • Abilities fire as fast as GCD allows            ║");
+        console.log("║      • You manage cooldowns yourself                   ║");
+        console.log("║                                                        ║");
+        console.log("╚════════════════════════════════════════════════════════╝\n");
+        const askQuestion = () => {
+            rl.question("Enable per-ability cooldowns? [y/n] (default: n): ", (answer) => {
+                const trimmed = answer.trim().toLowerCase();
+                if (trimmed === "" || trimmed === "n" || trimmed === "no") {
+                    rl.close();
+                    resolve(false);
+                }
+                else if (trimmed === "y" || trimmed === "yes") {
+                    rl.close();
+                    resolve(true);
+                }
+                else {
+                    console.log("Invalid selection. Please enter y or n.");
+                    askQuestion();
+                }
+            });
+        };
+        askQuestion();
+    });
+}
 // Event callback for logging
 function createEventCallback() {
     return (event) => {
@@ -19,21 +130,46 @@ function createEventCallback() {
         }
     };
 }
+// ============================================================================
+// MACRO AGENT CLASS
+// ============================================================================
 class MacroAgent {
     profile = null;
-    gestureDetector = null;
+    // Gesture detectors - only one is active at a time
+    alphaDetector = null;
+    omegaDetector = null;
+    specialKeyHandler = null;
+    activeSystem = "alpha";
     executor = null;
     inputListener;
     profileLoader;
     currentBackend = "robotjs";
     debugMode = false;
     preferredProfile = null;
+    isStopped = false;
+    // GCD Manager for ability cooldown tracking
+    gcdManager;
+    // Per-ability cooldown mode (set at startup)
+    perAbilityCooldownsEnabled = false;
+    // Lookup tables for fast binding access
+    alphaBindingLookup = new Map();
+    omegaBindingLookup = new Map();
+    // Calibration server state
+    calibrationServerEnabled = false;
     constructor() {
         this.profileLoader = new ProfileLoader("./profiles");
         // Create input listener
         this.inputListener = new InputListener((event) => {
             this.handleInputEvent(event);
         });
+        // Initialize GCD manager
+        this.gcdManager = new GCDManager();
+    }
+    /**
+     * Get the currently active gesture system
+     */
+    getActiveSystem() {
+        return this.activeSystem;
     }
     /**
      * Enable debug mode to show ALL raw key events
@@ -41,7 +177,6 @@ class MacroAgent {
     setDebugMode(enabled) {
         this.debugMode = enabled;
         if (enabled) {
-            // Set up raw event callback to show ALL keyboard events (for debugging peripherals)
             this.inputListener.setRawEventCallback((rawName, state, rawEvent) => {
                 console.log(`🔎 RAW: name="${rawName}" state=${state} scanCode=${rawEvent.scanCode || "N/A"} vKey=${rawEvent.vKey || "N/A"}`);
             });
@@ -59,7 +194,6 @@ class MacroAgent {
      */
     async initializeExecutor(backend) {
         if (backend) {
-            // Use specified backend
             this.executor = await ExecutorFactory.create({
                 backend,
                 onEvent: createEventCallback(),
@@ -67,17 +201,119 @@ class MacroAgent {
             this.currentBackend = backend;
         }
         else {
-            // Auto-select best available
             const result = await ExecutorFactory.createBest(createEventCallback());
             this.executor = result.executor;
             this.currentBackend = result.backend;
         }
+        // Set up GCD manager to use the executor
+        this.gcdManager.setExecuteCallback((binding) => {
+            if (this.executor) {
+                this.executor.executeDetached(binding);
+            }
+        });
+    }
+    /**
+     * Build lookup tables for fast binding access
+     */
+    buildBindingLookups() {
+        this.alphaBindingLookup.clear();
+        this.omegaBindingLookup.clear();
+        if (!this.profile)
+            return;
+        for (const macro of this.profile.macros) {
+            if (!macro.enabled)
+                continue;
+            if (!macro.trigger)
+                continue;
+            const key = macro.trigger.key;
+            const gesture = macro.trigger.gesture;
+            // Add to Alpha lookup
+            if (!this.alphaBindingLookup.has(key)) {
+                this.alphaBindingLookup.set(key, new Map());
+            }
+            this.alphaBindingLookup.get(key).set(gesture, macro);
+            // Check if gesture is already an Omega type
+            const isOmegaGesture = OMEGA_GESTURE_TYPES.includes(gesture);
+            if (isOmegaGesture) {
+                // Gesture is already Omega - add directly to Omega lookup
+                if (!this.omegaBindingLookup.has(key)) {
+                    this.omegaBindingLookup.set(key, new Map());
+                }
+                this.omegaBindingLookup.get(key).set(gesture, {
+                    ...macro,
+                    trigger: { key, gesture: gesture },
+                });
+            }
+            else {
+                // Alpha gesture - try to map to Omega equivalent
+                const omegaGesture = this.alphaToOmegaGesture(gesture);
+                if (omegaGesture) {
+                    if (!this.omegaBindingLookup.has(key)) {
+                        this.omegaBindingLookup.set(key, new Map());
+                    }
+                    // Don't overwrite if already set (first mapping wins)
+                    if (!this.omegaBindingLookup.get(key).has(omegaGesture)) {
+                        this.omegaBindingLookup.get(key).set(omegaGesture, {
+                            ...macro,
+                            trigger: { key, gesture: omegaGesture },
+                        });
+                    }
+                }
+            }
+        }
+    }
+    /**
+     * Map Alpha gesture to Omega gesture (for compatibility)
+     */
+    alphaToOmegaGesture(alpha) {
+        // Map primary Alpha gestures to Omega equivalents
+        switch (alpha) {
+            case "single":
+                return "quick";
+            case "single_long":
+            case "single_super_long":
+                return "long";
+            case "double":
+                return "quick_toggle";
+            case "double_long":
+            case "double_super_long":
+                return "long_toggle";
+            // Triple and quadruple don't have Omega equivalents
+            default:
+                return null;
+        }
+    }
+    /**
+     * Get Alpha binding for a specific key and gesture
+     */
+    getAlphaBinding(key, gesture) {
+        const keyMap = this.alphaBindingLookup.get(key);
+        if (!keyMap)
+            return undefined;
+        return keyMap.get(gesture);
+    }
+    /**
+     * Get Omega binding for a specific key and gesture
+     */
+    getOmegaBinding(key, gesture) {
+        const keyMap = this.omegaBindingLookup.get(key);
+        if (!keyMap)
+            return undefined;
+        return keyMap.get(gesture);
+    }
+    /**
+     * Check if an Alpha gesture has a valid binding
+     */
+    hasValidAlphaBinding(key, gesture) {
+        const binding = this.getAlphaBinding(key, gesture);
+        return !isEmptyBinding(binding);
     }
     /**
      * Handle raw input events
      */
     handleInputEvent(event) {
-        // Debug mode: log ALL incoming events to diagnose peripheral issues
+        if (this.isStopped)
+            return;
         if (this.debugMode) {
             if ("key" in event) {
                 console.log(`🔍 DEBUG [${event.type}] key="${event.key}" ts=${event.timestamp}`);
@@ -86,61 +322,188 @@ class MacroAgent {
                 console.log(`🔍 DEBUG [${event.type}] button="${event.button}" ts=${event.timestamp}`);
             }
         }
-        if (!this.gestureDetector)
-            return;
-        if ("key" in event) {
-            // Keyboard event
-            if (event.type === "down") {
-                this.gestureDetector.handleKeyDown(event.key);
+        // Route to active detector
+        if (this.activeSystem === "omega" && this.omegaDetector) {
+            if ("key" in event) {
+                if (event.type === "down") {
+                    this.omegaDetector.handleKeyDown(event.key);
+                }
+                else {
+                    this.omegaDetector.handleKeyUp(event.key);
+                }
             }
             else {
-                this.gestureDetector.handleKeyUp(event.key);
+                if (event.type === "down") {
+                    this.omegaDetector.handleMouseDown(event.button);
+                }
+                else {
+                    this.omegaDetector.handleMouseUp(event.button);
+                }
             }
         }
-        else {
-            // Mouse event
-            if (event.type === "down") {
-                this.gestureDetector.handleMouseDown(event.button);
+        else if (this.alphaDetector) {
+            if ("key" in event) {
+                if (event.type === "down") {
+                    this.alphaDetector.handleKeyDown(event.key);
+                }
+                else {
+                    this.alphaDetector.handleKeyUp(event.key);
+                }
             }
             else {
-                this.gestureDetector.handleMouseUp(event.button);
+                if (event.type === "down") {
+                    this.alphaDetector.handleMouseDown(event.button);
+                }
+                else {
+                    this.alphaDetector.handleMouseUp(event.button);
+                }
             }
         }
     }
     /**
-     * Handle detected gestures
-     * Uses fire-and-forget execution for concurrent macro support
+     * Handle detected Alpha gestures
      */
-    handleGesture(event) {
+    handleAlphaGesture(event) {
+        if (this.isStopped)
+            return;
         if (!this.profile || !this.executor)
             return;
-        console.log(`\n🎯 Gesture: ${event.inputKey} → ${event.gesture}`);
-        // Find matching macro binding
-        const binding = this.profile.macros.find((m) => m.trigger.key === event.inputKey &&
-            m.trigger.gesture === event.gesture &&
-            m.enabled);
-        if (binding) {
-            console.log(`   Matched: "${binding.name}"`);
-            // Use detached execution for concurrent sequences
-            // Different bindings can run at the same time
-            this.executor.executeDetached(binding);
+        const { inputKey, gesture } = event;
+        // P key: Reset short cooldowns (only if per-ability cooldowns enabled)
+        if (inputKey === "P" && this.perAbilityCooldownsEnabled) {
+            console.log(`\n🔄 [P] Resetting short cooldowns (<20s)...`);
+            const reset = this.gcdManager.resetShortCooldowns(20000);
+            if (reset.length > 0) {
+                console.log(`   Reset: ${reset.join(", ")}`);
+            }
+            else {
+                console.log(`   No abilities on short cooldown`);
+            }
+            return;
+        }
+        console.log(`\n🎯 [ALPHA] Gesture: ${inputKey} → ${gesture}`);
+        // Find matching macro binding (with fallback logic)
+        let binding = this.getAlphaBinding(inputKey, gesture);
+        let usedFallback = false;
+        if (isEmptyBinding(binding)) {
+            const fallbackGesture = getGestureFallback(gesture, (g) => this.hasValidAlphaBinding(inputKey, g));
+            if (fallbackGesture) {
+                binding = this.getAlphaBinding(inputKey, fallbackGesture);
+                usedFallback = true;
+                console.log(`   Fallback: ${gesture} → ${fallbackGesture}`);
+            }
+        }
+        if (!binding || isEmptyBinding(binding)) {
+            console.log(`   No macro bound`);
+            return;
+        }
+        if (usedFallback) {
+            console.log(`   Matched (via fallback): "${binding.name}"`);
         }
         else {
+            console.log(`   Matched: "${binding.name}"`);
+        }
+        this.executeBinding(binding);
+    }
+    /**
+     * Handle detected Omega gestures
+     */
+    handleOmegaGesture(event) {
+        if (this.isStopped)
+            return;
+        if (!this.profile || !this.executor)
+            return;
+        const { inputKey, gesture, wasToggled, holdDuration } = event;
+        // P key: Reset short cooldowns (only if per-ability cooldowns enabled)
+        if (inputKey === "P" && this.perAbilityCooldownsEnabled) {
+            console.log(`\n🔄 [P] Resetting short cooldowns (<20s)...`);
+            const reset = this.gcdManager.resetShortCooldowns(20000);
+            if (reset.length > 0) {
+                console.log(`   Reset: ${reset.join(", ")}`);
+            }
+            else {
+                console.log(`   No abilities on short cooldown`);
+            }
+            return;
+        }
+        const toggleIndicator = wasToggled ? " [TOGGLED]" : "";
+        console.log(`\n🎯 [OMEGA] Gesture: ${inputKey} → ${gesture}${toggleIndicator} (${Math.round(holdDuration || 0)}ms)`);
+        // Find matching Omega binding
+        const binding = this.getOmegaBinding(inputKey, gesture);
+        if (!binding || isEmptyBinding(binding)) {
             console.log(`   No macro bound`);
+            return;
+        }
+        console.log(`   Matched: "${binding.name}"`);
+        this.executeBinding(binding);
+    }
+    /**
+     * Execute a macro binding through the GCD system
+     */
+    executeBinding(binding) {
+        const gcdAbility = this.gcdManager.detectGCDAbility(binding);
+        if (gcdAbility) {
+            const result = this.gcdManager.tryExecute(binding);
+            if (result.executed) {
+                console.log(`   ⚔️  Executed immediately (${gcdAbility})`);
+            }
+            else if (result.queued) {
+                console.log(`   ⏳ Queued: ${result.reason}`);
+            }
+            else {
+                console.log(`   ❌ Skipped: ${result.reason}`);
+            }
+        }
+        else {
+            console.log(`   🎯 Executing (non-GCD)`);
+            this.executor.executeDetached(binding);
         }
     }
     /**
-     * Load a profile
+     * Load a macro profile
      */
-    loadProfile(filename) {
+    async loadProfile(filename) {
         const profile = this.profileLoader.loadProfile(filename);
-        if (!profile) {
+        if (!profile)
             return false;
-        }
         this.profile = profile;
-        // Create gesture detector with profile settings
-        this.gestureDetector = new GestureDetector(profile.gestureSettings || DEFAULT_GESTURE_SETTINGS, (event) => this.handleGesture(event));
-        // If executor supports compiled profile injection, provide compiled profile
+        this.buildBindingLookups();
+        // Create the appropriate gesture detector based on active system
+        if (this.activeSystem === "omega") {
+            this.omegaDetector = createOmegaGestureDetector(profile.gestureSettings || DEFAULT_GESTURE_SETTINGS, (event) => this.handleOmegaGesture(event));
+            // Wire up special key handler for D retaliate, S group member, C escape, etc.
+            this.specialKeyHandler = await createSpecialKeyHandler(true);
+            this.omegaDetector.setSpecialKeyCallback((event) => {
+                if (this.specialKeyHandler) {
+                    this.specialKeyHandler.handleEvent(event);
+                }
+            });
+            console.log("🔧 Special key handler wired up (D/S/C/=/F2)");
+            // Load per-key calibrated profiles
+            const keyProfiles = this.profileLoader.getKeyProfiles();
+            if (keyProfiles.size > 0) {
+                const profilesRecord = {};
+                for (const [key, keyProfile] of keyProfiles) {
+                    profilesRecord[key] = keyProfile;
+                }
+                this.omegaDetector.loadKeyProfiles(profilesRecord);
+                console.log(`🎯 Applied ${keyProfiles.size} per-key gesture profiles (Omega)`);
+            }
+        }
+        else {
+            this.alphaDetector = new GestureDetector(profile.gestureSettings || DEFAULT_GESTURE_SETTINGS, (event) => this.handleAlphaGesture(event));
+            // Load per-key calibrated profiles
+            const keyProfiles = this.profileLoader.getKeyProfiles();
+            if (keyProfiles.size > 0) {
+                const profilesRecord = {};
+                for (const [key, keyProfile] of keyProfiles) {
+                    profilesRecord[key] = keyProfile;
+                }
+                this.alphaDetector.loadKeyProfiles(profilesRecord);
+                console.log(`🎯 Applied ${keyProfiles.size} per-key gesture profiles (Alpha)`);
+            }
+        }
+        // Compiled profile for executor
         const compiled = this.profileLoader.getCompiledProfile();
         if (compiled && this.executor && "setCompiledProfile" in this.executor) {
             try {
@@ -154,97 +517,202 @@ class MacroAgent {
         return true;
     }
     /**
+     * Start the calibration hot-reload server
+     */
+    async startCalibrationServer() {
+        try {
+            const server = getCalibrationServer(8765);
+            await server.start();
+            // Connect to active gesture detector
+            const activeDetector = this.activeSystem === "omega" ? this.omegaDetector : this.alphaDetector;
+            if (activeDetector) {
+                server.connectGestureDetector(activeDetector);
+            }
+            if (this.profile?.gestureSettings) {
+                server.setGlobalDefaults(this.profile.gestureSettings);
+            }
+            this.calibrationServerEnabled = true;
+            console.log("\n🔥 Calibration server enabled (ws://localhost:8765)");
+        }
+        catch (error) {
+            console.warn("⚠️  Failed to start calibration server:", error);
+        }
+    }
+    /**
      * Start the macro agent
      */
-    async start(backend) {
-        console.log("\n╔════════════════════════════════════════════════════╗");
-        console.log("║       SWTOR MACRO AGENT - Per-Key Gestures         ║");
-        console.log("╚════════════════════════════════════════════════════╝\n");
+    async start(backend, system) {
+        console.log("\n╔════════════════════════════════════════════════════════╗");
+        console.log("║       SWTOR MACRO AGENT - GCD System v2.0              ║");
+        console.log("╚════════════════════════════════════════════════════════╝\n");
+        // System selection (if not provided via argument)
+        if (!system) {
+            // Check for command line argument or environment variable
+            const args = process.argv.slice(2);
+            const systemArg = args.find((a) => a.startsWith("--system="));
+            if (systemArg) {
+                const value = systemArg.split("=")[1].toLowerCase();
+                if (value === "omega" || value === "alpha") {
+                    system = value;
+                }
+            }
+            else if (process.env.GESTURE_SYSTEM) {
+                const envValue = process.env.GESTURE_SYSTEM.toLowerCase();
+                if (envValue === "omega" || envValue === "alpha") {
+                    system = envValue;
+                }
+            }
+            // If still not set, prompt user
+            if (!system) {
+                system = await selectGestureSystem();
+            }
+        }
+        this.activeSystem = system;
+        console.log(`\n🎮 Active gesture system: ${system.toUpperCase()}`);
+        if (system === "omega") {
+            console.log("   • 4 gestures: quick, long, quick_toggle, long_toggle");
+            console.log("   • Long fires IMMEDIATELY on threshold cross");
+            console.log("   • W/Y toggle keys for modifier state");
+            console.log("   • GCD: 1.275s (corrected)");
+        }
+        else {
+            console.log("   • 12 gestures: single/double/triple/quadruple variants");
+            console.log("   • Multi-tap detection with elongating window");
+            console.log("   • Long ↔ Super Long fallback enabled");
+        }
+        // Cooldown mode selection
+        const cooldownArg = process.argv.find((a) => a.startsWith("--cooldowns="));
+        if (cooldownArg) {
+            const value = cooldownArg.split("=")[1].toLowerCase();
+            this.perAbilityCooldownsEnabled =
+                value === "yes" || value === "y" || value === "true";
+        }
+        else if (process.env.ABILITY_COOLDOWNS) {
+            const envValue = process.env.ABILITY_COOLDOWNS.toLowerCase();
+            this.perAbilityCooldownsEnabled =
+                envValue === "yes" || envValue === "y" || envValue === "true";
+        }
+        else {
+            // Prompt user
+            this.perAbilityCooldownsEnabled = await selectCooldownMode();
+        }
+        // Configure GCD manager with cooldown mode
+        this.gcdManager.setPerAbilityCooldownsEnabled(this.perAbilityCooldownsEnabled);
+        if (this.perAbilityCooldownsEnabled) {
+            console.log("\n⏱️  Per-ability cooldowns: ENABLED");
+            console.log("   • Abilities respect their in-game cooldowns");
+            console.log("   • P key resets short cooldowns (<20s)");
+        }
+        else {
+            console.log("\n⏱️  Per-ability cooldowns: DISABLED (GCD only)");
+            console.log("   • Only 1.275s GCD between abilities");
+            console.log("   • You manage cooldowns yourself");
+        }
         // Initialize executor
         await this.initializeExecutor(backend);
         console.log(`\n🔧 Executor backend: ${this.currentBackend.toUpperCase()}`);
-        // List available profiles
+        // Load profile
         const profiles = this.profileLoader.listProfiles();
         if (profiles.length === 0) {
             console.log("⚠️  No profiles found in ./profiles/");
             console.log("   Creating example profile...\n");
-            // Profile will be created from the example.json we already have
-            if (!this.loadProfile("example.json")) {
+            if (!(await this.loadProfile("example.json"))) {
                 console.error("❌ Failed to load profile");
                 return;
             }
         }
         else {
             console.log(`📂 Available profiles: ${profiles.join(", ")}`);
-            // Determine which profile to load
             let profileToLoad;
             if (this.preferredProfile) {
-                // Use explicitly specified profile
                 if (profiles.includes(this.preferredProfile)) {
                     profileToLoad = this.preferredProfile;
                 }
                 else {
                     console.error(`❌ Specified profile not found: ${this.preferredProfile}`);
-                    console.log(`   Available: ${profiles.join(", ")}`);
                     return;
                 }
             }
             else {
-                // Prefer swtor profile if available, otherwise first
                 const swtorProfile = profiles.find((p) => p.toLowerCase().includes("swtor"));
                 profileToLoad = swtorProfile || profiles[0];
             }
             console.log(`📌 Loading: ${profileToLoad}`);
-            if (!this.loadProfile(profileToLoad)) {
+            if (!(await this.loadProfile(profileToLoad))) {
                 console.error("❌ Failed to load profile");
                 return;
             }
         }
-        // Show loaded macros
+        // Start calibration server if enabled
+        if (process.env.ENABLE_CALIBRATION_SERVER === "true") {
+            await this.startCalibrationServer();
+        }
+        // Show summary
         if (this.profile) {
-            console.log(`\n📋 Loaded macros:`);
+            let gcdCount = 0;
+            let nonGcdCount = 0;
             for (const macro of this.profile.macros) {
                 if (macro.enabled) {
-                    console.log(`   • ${macro.trigger.key} (${macro.trigger.gesture}) → "${macro.name}"`);
+                    if (this.gcdManager.detectGCDAbility(macro)) {
+                        gcdCount++;
+                    }
+                    else {
+                        nonGcdCount++;
+                    }
                 }
             }
+            console.log(`\n📋 Loaded macros: ${gcdCount} GCD, ${nonGcdCount} non-GCD`);
+            console.log(`   GCD Duration: ${this.activeSystem === "omega" ? "1.275s" : "1.385s"}`);
         }
-        // Show constraints and capabilities
-        console.log("\n📏 Sequence Constraints:");
-        console.log("   • Min delay: 25ms");
-        console.log("   • Variance: ≥4ms (max - min)");
-        console.log("   • Max unique keys: 4 per sequence");
-        console.log("   • Max repeats: 6 per key");
-        console.log("   • Max press count: 4 (excess = quadruple, no long)");
-        console.log("\n🔀 Concurrency:");
-        console.log("   • Simultaneous keys: YES (all fingers work at once)");
-        console.log("   • Concurrent sequences: YES (different macros overlap)");
+        console.log("\n🔒 GCD System:");
+        console.log("   • GCD abilities queue when GCD active");
+        console.log("   • Most recent gesture wins when GCD ends");
+        console.log("   • Per-ability cooldowns tracked independently");
+        console.log("\n📀 Concurrency:");
+        console.log("   • Simultaneous keys: YES");
+        console.log("   • Concurrent sequences: YES");
+        console.log("   • GCD abilities: QUEUED");
+        // Show calibration status
+        if (this.profileLoader.hasCalibrationData()) {
+            const detector = this.activeSystem === "omega" ? this.omegaDetector : this.alphaDetector;
+            const customKeys = detector?.getCustomizedKeys() || [];
+            console.log("\n📏 Calibration:");
+            console.log(`   • Per-key profiles: ${customKeys.length} keys`);
+        }
         // Start listening
-        console.log("\n─────────────────────────────────────────────────────");
+        console.log("\n─────────────────────────────────────────────────────────");
         this.inputListener.start();
     }
     /**
      * Stop the macro agent
      */
     stop() {
+        this.isStopped = true;
         this.inputListener.stop();
+        this.gcdManager.shutdown();
+        // Destroy active detector
+        if (this.alphaDetector && "destroy" in this.alphaDetector) {
+            this.alphaDetector.destroy?.();
+        }
+        if (this.omegaDetector) {
+            this.omegaDetector.destroy();
+        }
+        // Stop executor
         if (this.executor && "cancelAll" in this.executor) {
             this.executor.cancelAll?.();
         }
         if (this.executor && "destroy" in this.executor) {
             this.executor.destroy?.();
         }
+        // Stop calibration server
+        if (this.calibrationServerEnabled) {
+            stopCalibrationServer();
+        }
         console.log("🛑 Macro Agent stopped");
     }
-    /**
-     * Get current backend
-     */
     getBackend() {
         return this.currentBackend;
     }
-    /**
-     * Show available backends
-     */
     static async showBackends() {
         console.log("\n📊 Available executor backends:\n");
         const backends = await ExecutorFactory.getAvailableBackends();
@@ -259,37 +727,43 @@ class MacroAgent {
 // MAIN
 // ============================================================================
 async function main() {
-    // Parse command line arguments
     const args = process.argv.slice(2);
     // Show help
     if (args.includes("--help") || args.includes("-h")) {
         console.log(`
-SWTOR Macro Agent - Per-Key Gesture Detection
+SWTOR Macro Agent - GCD System v2.0 (Alpha/Omega)
 
 USAGE:
-  npm start                    Auto-select best executor
-  npm start -- --backend=X     Use specific backend
+  npm start                    Auto-select executor, prompt for system
+  npm start -- --system=omega  Use Omega gesture system
+  npm start -- --system=alpha  Use Alpha gesture system
+  npm start -- --backend=X     Use specific executor backend
   npm start -- --backends      Show available backends
   npm start -- --help          Show this help
+
+GESTURE SYSTEMS:
+  alpha       12 gestures (original) - single/double/triple/quadruple variants
+  omega       4 gestures (streamlined) - quick/long with toggle modifiers
 
 BACKENDS:
   robotjs       RobotJS (SendInput API) - Medium detection risk
   interception  Interception Driver - Hard to detect (kernel-level)
   mock          Mock executor (no keypresses) - For testing
 
-EXAMPLES:
-  npm start -- --backend=robotjs
-  npm start -- --profile=swtor-vengeance-jugg.json
-  npm start -- --backend=interception --profile=example.json
-  npm start -- --backends
-  npm start -- --debug
+CALIBRATION:
+  npm run calibrate              Run calibration wizard
+  npm run calibrate:hot          Hot-reload mode (live tuning)
 
 OPTIONS:
-  --profile=<name>            Load specific profile from profiles/ folder
-  --debug                     Show ALL raw key events (for debugging peripherals)
+  --system=<alpha|omega>       Select gesture detection system
+  --backend=<backend>          Select executor backend
+  --profile=<filename>         Load specific profile
+  --debug                      Show ALL raw key events
 
 ENVIRONMENT:
-  MACRO_BACKEND=interception   Set default backend via env var
+  GESTURE_SYSTEM=omega           Set default gesture system
+  MACRO_BACKEND=interception     Set default executor backend
+  ENABLE_CALIBRATION_SERVER=true Enable hot-reload server
 `);
         process.exit(0);
     }
@@ -298,7 +772,7 @@ ENVIRONMENT:
         await MacroAgent.showBackends();
         process.exit(0);
     }
-    // Parse backend option
+    // Parse options
     let backend;
     const backendArg = args.find((a) => a.startsWith("--backend="));
     if (backendArg) {
@@ -307,13 +781,19 @@ ENVIRONMENT:
     else if (process.env.MACRO_BACKEND) {
         backend = process.env.MACRO_BACKEND;
     }
-    // Parse profile option
     let profileName;
     const profileArg = args.find((a) => a.startsWith("--profile="));
     if (profileArg) {
         profileName = profileArg.split("=")[1];
     }
-    // Parse debug option
+    let system;
+    const systemArg = args.find((a) => a.startsWith("--system="));
+    if (systemArg) {
+        const value = systemArg.split("=")[1].toLowerCase();
+        if (value === "omega" || value === "alpha") {
+            system = value;
+        }
+    }
     const debugMode = args.includes("--debug");
     const agent = new MacroAgent();
     agent.setDebugMode(debugMode);
@@ -321,15 +801,19 @@ ENVIRONMENT:
         agent.setPreferredProfile(profileName);
     }
     // Handle graceful shutdown
-    process.on("SIGINT", () => {
+    let isShuttingDown = false;
+    const shutdown = () => {
+        if (isShuttingDown)
+            return;
+        isShuttingDown = true;
         agent.stop();
-        process.exit(0);
-    });
-    process.on("SIGTERM", () => {
-        agent.stop();
-        process.exit(0);
-    });
+        setTimeout(() => process.exit(0), 50);
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+    process.on("exit", shutdown);
     // Start the agent
-    await agent.start(backend);
+    await agent.start(backend, system);
 }
 main().catch(console.error);
+//# sourceMappingURL=index.js.map

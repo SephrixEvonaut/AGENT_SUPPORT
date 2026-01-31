@@ -66,3 +66,4 @@ export declare class DiscordController {
     isMicMuted(): boolean;
 }
 export declare function getDiscordController(): DiscordController;
+//# sourceMappingURL=discordController.d.ts.map

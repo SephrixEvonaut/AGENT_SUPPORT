@@ -25,6 +25,10 @@ const KEY_NAME_MAP = {
     "NUMPAD 6": "NUMPAD6",
     // Venus mouse middle click
     "MOUSE MIDDLE": "MIDDLE_CLICK",
+    // Equals key variants
+    EQUAL: "=",
+    EQUALS: "=",
+    OEM_PLUS: "=", // Windows virtual key name
     // Letters are already uppercase
 };
 // ============================================================================
@@ -100,6 +104,7 @@ export class StdinInputListener {
 export class GlobalInputListener {
     callback;
     isListening = false;
+    isStopped = false; // Guard against events after stop
     listener = null;
     rawEventCallback = null;
     constructor(callback) {
@@ -119,6 +124,10 @@ export class GlobalInputListener {
             const { GlobalKeyboardListener } = await import("node-global-key-listener");
             this.listener = new GlobalKeyboardListener();
             this.listener.addListener((e, down) => {
+                // CRITICAL: Ignore ALL events after stop() is called
+                if (this.isStopped) {
+                    return;
+                }
                 // If raw event callback is set, forward ALL events for debugging
                 if (this.rawEventCallback) {
                     this.rawEventCallback(e.name, e.state, e);
@@ -157,6 +166,8 @@ export class GlobalInputListener {
         }
     }
     stop() {
+        // Set flag FIRST to block any in-flight events immediately
+        this.isStopped = true;
         if (this.listener) {
             // GlobalKeyboardListener doesn't have a stop method, it's garbage collected
             this.listener = null;
@@ -194,9 +205,13 @@ export class InputListener {
     callback;
     initialized = false;
     rawEventCallback = null;
+    forceStdin;
     constructor(callback) {
         this.callback = callback;
         this.delegate = new StdinInputListener(callback);
+        // Check environment variable to force stdin mode
+        this.forceStdin = process.env.INPUT_MODE === "stdin" ||
+            process.argv.includes("--stdin");
     }
     /**
      * Enable raw event debugging - shows ALL key events including unrecognized ones
@@ -206,7 +221,8 @@ export class InputListener {
     }
     async start() {
         if (!this.initialized) {
-            this.delegate = await createInputListener(this.callback, "auto");
+            const mode = this.forceStdin ? "stdin" : "auto";
+            this.delegate = await createInputListener(this.callback, mode);
             this.initialized = true;
             // If raw callback was set before start, apply it to the GlobalInputListener
             if (this.rawEventCallback &&
@@ -231,3 +247,4 @@ export class InputListener {
         return this.delegate.isActive();
     }
 }
+//# sourceMappingURL=inputListener.js.map

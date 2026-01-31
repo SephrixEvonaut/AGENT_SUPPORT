@@ -1,6 +1,7 @@
 // ============================================================================
 // PROFILE LOADER - Load and validate macro profiles from JSON
 // ============================================================================
+// UPDATED: Now supports calibrated profiles with per-key gesture thresholds
 
 import fs from "fs";
 import path from "path";
@@ -18,6 +19,8 @@ import {
   OutputKey,
 } from "./types.js";
 import { compileProfile } from "./profileCompiler.js";
+import { KeyProfile, CalibratedMacroProfile } from "./calibrationTypes.js";
+import { OMEGA_GESTURE_TYPES, OmegaGestureType } from "./omegaTypes.js";
 
 // Default gesture settings (tuned for comfortable human timing)
 export const DEFAULT_GESTURE_SETTINGS: GestureSettings = {
@@ -41,6 +44,7 @@ interface ValidationResult {
 export class ProfileLoader {
   private profileDir: string;
   private lastCompiled: CompiledProfile | null = null;
+  private keyProfiles: Map<string, KeyProfile> = new Map();
 
   constructor(profileDir: string = "./profiles") {
     this.profileDir = profileDir;
@@ -51,22 +55,32 @@ export class ProfileLoader {
    */
   private validateBinding(
     binding: MacroBinding,
-    index: number
+    index: number,
   ): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
+    // Check trigger exists
+    if (!binding.trigger) {
+      errors.push(
+        `Binding ${index} "${binding.name}": Missing trigger`,
+      );
+      return { valid: false, errors, warnings };
+    }
+
     // Check trigger key
     if (!INPUT_KEYS.includes(binding.trigger.key as InputKey)) {
       errors.push(
-        `Binding ${index} "${binding.name}": Invalid trigger key "${binding.trigger.key}"`
+        `Binding ${index} "${binding.name}": Invalid trigger key "${binding.trigger.key}"`,
       );
     }
 
-    // Check gesture type
-    if (!GESTURE_TYPES.includes(binding.trigger.gesture as GestureType)) {
+    // Check gesture type (accept both Alpha and Omega gesture types)
+    const isValidAlphaGesture = GESTURE_TYPES.includes(binding.trigger.gesture as GestureType);
+    const isValidOmegaGesture = OMEGA_GESTURE_TYPES.includes(binding.trigger.gesture as OmegaGestureType);
+    if (!isValidAlphaGesture && !isValidOmegaGesture) {
       errors.push(
-        `Binding ${index} "${binding.name}": Invalid gesture "${binding.trigger.gesture}"`
+        `Binding ${index} "${binding.name}": Invalid gesture "${binding.trigger.gesture}"`,
       );
     }
 
@@ -79,12 +93,14 @@ export class ProfileLoader {
       for (let i = 0; i < binding.sequence.length; i++) {
         const step = binding.sequence[i];
 
-        // Scroll steps don't require a key
+        // Scroll steps, timer-only steps, and delay-only steps don't require a key
         const isScrollStep = step.scrollDirection !== undefined;
+        const isTimerOnlyStep = step.timer !== undefined;
+        const isDelayOnlyStep = (step.minDelay !== undefined || step.maxDelay !== undefined) && !step.key;
 
-        if (!step.key && !isScrollStep) {
+        if (!step.key && !isScrollStep && !isTimerOnlyStep && !isDelayOnlyStep) {
           errors.push(
-            `Binding ${index} "${binding.name}" step ${i}: Missing key`
+            `Binding ${index} "${binding.name}" step ${i}: Missing key`,
           );
         }
 
@@ -97,7 +113,7 @@ export class ProfileLoader {
           ) {
             errors.push(
               `Binding ${index} "${binding.name}" step ${i}: ` +
-                `minDelay ${step.minDelay}ms < ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms minimum`
+                `minDelay ${step.minDelay}ms < ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms minimum`,
             );
           }
 
@@ -106,7 +122,7 @@ export class ProfileLoader {
             if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
               errors.push(
                 `Binding ${index} "${binding.name}" step ${i}: ` +
-                  `variance ${variance}ms < ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms minimum`
+                  `variance ${variance}ms < ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms minimum`,
               );
             }
           }
@@ -118,18 +134,20 @@ export class ProfileLoader {
           if (!OUTPUT_KEYS.includes(step.dualKey as OutputKey)) {
             errors.push(
               `Binding ${index} "${binding.name}" step ${i}: ` +
-                `Invalid dualKey "${step.dualKey}" - must be a valid OUTPUT_KEY`
+                `Invalid dualKey "${step.dualKey}" - must be a valid OUTPUT_KEY`,
             );
           }
 
-          // Check if dualKey equals primary key
-          const primaryKeyNormalized = step.key.toUpperCase();
-          const dualKeyNormalized = step.dualKey.toUpperCase();
-          if (primaryKeyNormalized === dualKeyNormalized) {
-            errors.push(
-              `Binding ${index} "${binding.name}" step ${i}: ` +
-                `dualKey "${step.dualKey}" cannot be the same as primary key "${step.key}"`
-            );
+          // Check if dualKey equals primary key (only if step.key exists)
+          if (step.key) {
+            const primaryKeyNormalized = step.key.toUpperCase();
+            const dualKeyNormalized = step.dualKey.toUpperCase();
+            if (primaryKeyNormalized === dualKeyNormalized) {
+              errors.push(
+                `Binding ${index} "${binding.name}" step ${i}: ` +
+                  `dualKey "${step.dualKey}" cannot be the same as primary key "${step.key}"`,
+              );
+            }
           }
         }
 
@@ -137,7 +155,7 @@ export class ProfileLoader {
         if (step.dualKeyOffsetMs !== undefined && step.dualKeyOffsetMs < 1) {
           errors.push(
             `Binding ${index} "${binding.name}" step ${i}: ` +
-              `dualKeyOffsetMs must be >= 1ms (got ${step.dualKeyOffsetMs}ms)`
+              `dualKeyOffsetMs must be >= 1ms (got ${step.dualKeyOffsetMs}ms)`,
           );
         }
 
@@ -147,32 +165,36 @@ export class ProfileLoader {
           if (dmin <= 0 || dmax < dmin) {
             errors.push(
               `Binding ${index} "${binding.name}" step ${i}: ` +
-                `dualKeyDownDuration must be [min,max] with min>0 and max>=min`
+                `dualKeyDownDuration must be [min,max] with min>0 and max>=min`,
             );
           }
         }
       }
 
-      // Count unique keys
-      const uniqueKeys = new Set(binding.sequence.map((s) => s.key));
+      // Count unique keys (only steps with keys)
+      const uniqueKeys = new Set(
+        binding.sequence.filter((s) => s.key).map((s) => s.key)
+      );
       if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
         errors.push(
           `Binding ${index} "${binding.name}": ` +
-            `${uniqueKeys.size} unique keys > ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS} maximum`
+            `${uniqueKeys.size} unique keys > ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS} maximum`,
         );
       }
 
       // Count steps per key
       const keyCounts = new Map<string, number>();
       for (const step of binding.sequence) {
-        keyCounts.set(step.key, (keyCounts.get(step.key) || 0) + 1);
+        if (step.key) {
+          keyCounts.set(step.key, (keyCounts.get(step.key) || 0) + 1);
+        }
       }
 
       for (const [key, count] of keyCounts) {
         if (count > SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY) {
           errors.push(
             `Binding ${index} "${binding.name}": ` +
-              `Key "${key}" used in ${count} steps > ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} maximum`
+              `Key "${key}" used in ${count} steps > ${SEQUENCE_CONSTRAINTS.MAX_STEPS_PER_KEY} maximum`,
           );
         }
       }
@@ -213,10 +235,11 @@ export class ProfileLoader {
       // Check for duplicate triggers
       const triggers = new Set<string>();
       for (const binding of profile.macros) {
+        if (!binding.trigger) continue;
         const key = `${binding.trigger.key}:${binding.trigger.gesture}`;
         if (triggers.has(key)) {
           warnings.push(
-            `Duplicate trigger: ${binding.trigger.key} + ${binding.trigger.gesture}`
+            `Duplicate trigger: ${binding.trigger.key} + ${binding.trigger.gesture}`,
           );
         }
         triggers.add(key);
@@ -232,17 +255,74 @@ export class ProfileLoader {
 
   /**
    * Load a profile from JSON file
+   * Supports both legacy profiles and calibrated profiles with keyProfiles
+   * Also supports Omega-style profiles with 'bindings' instead of 'macros'
    */
   loadProfile(filename: string): MacroProfile | null {
     const filepath = path.join(this.profileDir, filename);
 
     try {
       const content = fs.readFileSync(filepath, "utf-8");
-      const profile = JSON.parse(content) as MacroProfile;
+      const profile = JSON.parse(content) as MacroProfile &
+        CalibratedMacroProfile & { bindings?: any[] };
 
       // Apply default settings if missing
       if (!profile.gestureSettings) {
         profile.gestureSettings = DEFAULT_GESTURE_SETTINGS;
+      }
+
+      // Convert Omega-style bindings to standard macros format if needed
+      if (!profile.macros && profile.bindings) {
+        profile.macros = profile.bindings.map((binding: any) => ({
+          name: binding.name,
+          trigger: {
+            key: binding.inputKey,
+            gesture: binding.gesture,
+          },
+          sequence: binding.sequence || [],
+          enabled: binding.enabled !== false,
+          gcdAbility: binding.gcdAbility,
+        }));
+        console.log(`📋 Converted ${profile.macros.length} Omega bindings to macros`);
+      }
+
+      // Ensure macros array exists
+      if (!profile.macros) {
+        profile.macros = [];
+      }
+
+      // Load per-key calibrated profiles if present
+      this.keyProfiles.clear();
+      if (profile.keyProfiles) {
+        for (const [key, keyProfile] of Object.entries(profile.keyProfiles)) {
+          this.keyProfiles.set(key, keyProfile as KeyProfile);
+        }
+        console.log(
+          `📏 Loaded ${this.keyProfiles.size} calibrated key profiles`,
+        );
+
+        // Log calibration metadata if present
+        if (profile.calibratedAt) {
+          const calibratedDate = new Date(profile.calibratedAt);
+          console.log(`   Calibrated: ${calibratedDate.toLocaleString()}`);
+        }
+        if (profile.calibrationVersion) {
+          console.log(`   Version: ${profile.calibrationVersion}`);
+        }
+
+        // Log confidence stats for calibrated keys
+        const confidences: number[] = [];
+        for (const [key, kp] of this.keyProfiles) {
+          if (kp.calibrationData?.confidence) {
+            confidences.push(kp.calibrationData.confidence);
+          }
+        }
+        if (confidences.length > 0) {
+          const avgConfidence = Math.round(
+            confidences.reduce((a, b) => a + b, 0) / confidences.length,
+          );
+          console.log(`   Avg confidence: ${avgConfidence}%`);
+        }
       }
 
       // Apply default buffer tier based on ability name (A-K = low, L-Z = medium)
@@ -283,18 +363,20 @@ export class ProfileLoader {
       }
 
       console.log(
-        `✅ Loaded profile: "${profile.name}" (${profile.macros.length} macros)`
+        `✅ Loaded profile: "${profile.name}" (${profile.macros.length} macros)`,
       );
+
       // Compile profile once for fast runtime checks
       try {
         const compiled = compileProfile(profile);
         this.lastCompiled = compiled;
         console.log(
-          `🔎 Profile compiled: ${compiled.conundrumKeys.size} conundrum keys`
+          `🔎 Profile compiled: ${compiled.conundrumKeys.size} conundrum keys`,
         );
       } catch (err) {
         console.warn(`⚠️  Profile compilation failed: ${err}`);
       }
+
       return profile;
     } catch (error) {
       if (error instanceof SyntaxError) {
@@ -313,6 +395,28 @@ export class ProfileLoader {
    */
   getCompiledProfile(): CompiledProfile | null {
     return this.lastCompiled;
+  }
+
+  /**
+   * Get loaded key profiles for gesture detector
+   */
+  getKeyProfiles(): Map<string, KeyProfile> {
+    return new Map(this.keyProfiles);
+  }
+
+  /**
+   * Check if profile has calibration data
+   */
+  hasCalibrationData(): boolean {
+    return this.keyProfiles.size > 0;
+  }
+
+  /**
+   * Get calibration confidence for a specific key
+   */
+  getKeyConfidence(key: string): number | null {
+    const profile = this.keyProfiles.get(key);
+    return profile?.calibrationData?.confidence ?? null;
   }
 
   /**

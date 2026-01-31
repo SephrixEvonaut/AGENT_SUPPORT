@@ -2,7 +2,7 @@
 // SWTOR MACRO AGENT - TYPE DEFINITIONS
 // ============================================================================
 
-// 23 Input Keys for gesture detection
+// 27 Input Keys for gesture detection (added E, F, G, NUMPAD8 for Omega D-key triggers)
 export const INPUT_KEYS = [
   // Letters (Azeron finger keys)
   "W",
@@ -17,6 +17,10 @@ export const INPUT_KEYS = [
   "C",
   "H",
   "P",
+  // D-key only input keys (Omega system - only valid during D hold)
+  "E",
+  "F",
+  "G",
   // Function key
   "F2",
   // Number keys
@@ -33,6 +37,8 @@ export const INPUT_KEYS = [
   "=",
   // Venus mouse
   "MIDDLE_CLICK",
+  // Numpad (for D-key triggers in Omega)
+  "NUMPAD8",
 ] as const;
 
 export type InputKey = (typeof INPUT_KEYS)[number];
@@ -111,12 +117,41 @@ export const GESTURE_TYPES = [
 
 export type GestureType = (typeof GESTURE_TYPES)[number];
 
+// ============================================================================
+// TIMER CONFIGURATION (NEW for Omega system)
+// ============================================================================
+
+/**
+ * Timer step configuration for TTS countdown timers.
+ * Used by Omega system for ability cooldown tracking.
+ */
+export interface TimerConfig {
+  /** Unique identifier for the timer (e.g., "drop", "burst", "laze") */
+  id: string;
+  /** Duration in seconds before TTS fires */
+  durationSeconds: number;
+  /** TTS message to speak when timer completes */
+  message: string;
+}
+
+// ============================================================================
+// SEQUENCE STEP
+// ============================================================================
+
 // Timing configuration for a single keypress in a sequence
 export interface SequenceStep {
-  key: string; // The key to press (e.g., "a", "b", "f1")
-  name?: string; // Optional step name for display/debugging
-  minDelay: number; // Minimum ms before next press (>= 25ms)
-  maxDelay: number; // Maximum ms before next press (variance >= 4ms)
+  /** The key to press (e.g., "a", "b", "f1"). Optional if this is a timer-only step. */
+  key?: string;
+
+  /** Optional step name for display/debugging */
+  name?: string;
+
+  /** Minimum ms before next press (>= 25ms) */
+  minDelay?: number;
+
+  /** Maximum ms before next press (variance >= 4ms) */
+  maxDelay?: number;
+
   /**
    * How long to hold the key down (inclusive range in ms).
    * Defaults to [23, 38] if omitted.
@@ -191,11 +226,19 @@ export interface SequenceStep {
     count: 2 | 3 | 4;
     windowMs: number;
   };
+
+  /**
+   * Timer configuration for TTS countdown timers (NEW for Omega system).
+   * If set, this step starts a timer instead of (or in addition to) pressing a key.
+   * Timer steps without a key will only start the timer.
+   * Timer steps with a key will press the key AND start the timer.
+   */
+  timer?: TimerConfig;
 }
 
 /**
  * GCD (Global Cooldown) ability identifiers.
- * Used to track which abilities trigger the 1.385s global cooldown
+ * Used to track which abilities trigger the 1.275s global cooldown
  * and their individual cooldown timers.
  */
 export type GCDAbilityType =
@@ -221,7 +264,7 @@ export type GCDAbilityType =
 // A macro binding: gesture triggers a sequence
 export interface MacroBinding {
   name: string;
-  trigger: {
+  trigger?: {
     key: InputKey;
     gesture: GestureType;
   };
@@ -284,3 +327,20 @@ export const SEQUENCE_CONSTRAINTS = {
   MAX_UNIQUE_KEYS: 6, // Maximum 6 unique keys per sequence
   MAX_STEPS_PER_KEY: 6, // Maximum 6 steps per key
 } as const;
+
+// ============================================================================
+// CALIBRATION SYSTEM TYPES (re-export for convenience)
+// ============================================================================
+
+export type {
+  RawCalibrationData,
+  CalibrationStatistics,
+  CalibrationData,
+  CalculatedThresholds,
+  KeyProfile,
+  CalibratedMacroProfile,
+  CalibrationConfig,
+  CalibrationStep,
+  ServerMessage,
+  ClientCommand,
+} from "./calibrationTypes.js";

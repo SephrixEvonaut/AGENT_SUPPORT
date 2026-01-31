@@ -12,10 +12,12 @@ export type ExecutionCallback = (event: ExecutionEvent) => void;
 export declare class SequenceExecutor {
     private isExecuting;
     private activeExecutions;
+    private isShutdown;
     private callback;
     private compiledProfile;
     private trafficController;
     private timerManager;
+    private sleepAbortController;
     private heldModifier;
     constructor(callback?: ExecutionCallback, compiledProfile?: CompiledProfile);
     /**
@@ -31,17 +33,6 @@ export declare class SequenceExecutor {
      */
     private validateSequence;
     /**
-     * Get randomized delay between min and max (inclusive)
-     * Uses uniform distribution
-     */
-    private getRandomDelay;
-    /**
-     * Get weighted random keyDownDuration
-     * Special weights: 37ms=10%, 29ms=10%, 23ms=1%
-     * Remaining 79% distributed equally among other values in range
-     */
-    private getWeightedKeyDownDuration;
-    /**
      * Map our profile key names to RobotJS key names
      */
     private robotJsKeyMap;
@@ -50,11 +41,12 @@ export declare class SequenceExecutor {
      */
     private parseKey;
     /**
-     * Buffer tier ranges (inclusive)
+     * Buffer tier ranges (inclusive) - base ranges for human randomizer
+     * Actual values selected using sophisticated multi-layer randomization
      */
     private bufferRanges;
     /**
-     * Sleep for specified milliseconds
+     * Sleep for specified milliseconds (cancellable - aborts immediately on shutdown)
      */
     private sleep;
     /**
@@ -82,6 +74,23 @@ export declare class SequenceExecutor {
      */
     cancelAll(): void;
     /**
+     * Grant supremacy to a macro - it bypasses traffic control entirely
+     * Use for high-priority macros that should never wait
+     */
+    grantSupremacy(macroName: string): void;
+    /**
+     * Revoke supremacy from a macro
+     */
+    revokeSupremacy(macroName: string): void;
+    /**
+     * Get list of macros with supremacy
+     */
+    getSupremacyList(): string[];
+    /**
+     * Destroy the executor - stops all operations and prevents new ones
+     */
+    destroy(): void;
+    /**
      * Execute a macro binding's sequence (fire-and-forget)
      * This method launches the execution as a detached promise, allowing
      * multiple different bindings to run simultaneously.
@@ -105,3 +114,4 @@ export declare class SequenceExecutor {
      */
     shutdown(): void;
 }
+//# sourceMappingURL=sequenceExecutor.d.ts.map

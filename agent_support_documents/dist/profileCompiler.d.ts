@@ -4,3 +4,4 @@ import { MacroProfile, CompiledProfile } from "./types.js";
  */
 export declare function compileProfile(profile: MacroProfile): CompiledProfile;
 export declare function isConundrumKey(key: string, compiled: CompiledProfile): boolean;
+//# sourceMappingURL=profileCompiler.d.ts.map

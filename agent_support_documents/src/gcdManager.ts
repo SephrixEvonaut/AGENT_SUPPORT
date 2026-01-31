@@ -3,7 +3,7 @@
 // ============================================================================
 //
 // Emulates SWTOR's GCD (Global Cooldown) system:
-// - 1.385 second global cooldown after any GCD ability
+// - 1.275 second global cooldown after any GCD ability
 // - Per-ability cooldowns that must expire before reuse
 // - Queue system that executes most recent GCD sequence when GCD ends
 // - Long/Super Long gesture fallback when one is unbound
@@ -11,6 +11,7 @@
 // ============================================================================
 
 import { MacroBinding, GestureType } from "./types.js";
+import { OmegaMacroBinding } from "./omegaTypes.js";
 
 // Create a simple logger if the real one isn't available
 const logger = {
@@ -26,12 +27,12 @@ const logger = {
 // CONFIGURATION
 // ============================================================================
 
-/** GCD duration in milliseconds (1.385 seconds) */
-export const GCD_DURATION_MS = 1385;
+/** GCD duration in milliseconds (1.275 seconds - corrected for SWTOR) */
+export const GCD_DURATION_MS = 1275;
 
 /**
  * Abilities that trigger the Global Cooldown.
- * All of these cause a 1.385s lockout before another GCD ability can fire.
+ * All of these cause a 1.275s lockout before another GCD ability can fire.
  */
 export const GCD_ABILITIES = new Set([
   "SWEEPING_SLASH",
@@ -150,10 +151,73 @@ export class GCDManager {
   /** Shutdown flag */
   private isShutdown: boolean = false;
 
+  /**
+   * Per-ability cooldown tracking mode.
+   * When false, only GCD is respected - individual ability cooldowns are ignored.
+   * When true, abilities respect their in-game cooldowns (CB 7s, FS 11s, etc.)
+   */
+  private perAbilityCooldownsEnabled: boolean = true;
+
   constructor() {
     logger.info(
       `Initialized - GCD: ${GCD_DURATION_MS}ms, Abilities: ${GCD_ABILITIES.size}`,
     );
+  }
+
+  /**
+   * Enable or disable per-ability cooldown tracking.
+   * When disabled, only GCD (1.275s) is enforced between abilities.
+   */
+  setPerAbilityCooldownsEnabled(enabled: boolean): void {
+    this.perAbilityCooldownsEnabled = enabled;
+    if (enabled) {
+      logger.info("Per-ability cooldowns ENABLED (CB 7s, FS 11s, etc.)");
+    } else {
+      logger.info("Per-ability cooldowns DISABLED (GCD only mode)");
+      this.abilityCooldowns.clear(); // Clear any existing cooldowns
+    }
+  }
+
+  /**
+   * Check if per-ability cooldowns are enabled
+   */
+  isPerAbilityCooldownsEnabled(): boolean {
+    return this.perAbilityCooldownsEnabled;
+  }
+
+  /**
+   * Reset cooldowns for abilities with duration less than specified threshold.
+   * Default threshold is 20000ms (20 seconds).
+   * Returns the list of abilities that were reset.
+   */
+  resetShortCooldowns(maxDurationMs: number = 20000): string[] {
+    const resetAbilities: string[] = [];
+
+    for (const [ability, lastUsed] of this.abilityCooldowns) {
+      const cooldownMs = ABILITY_COOLDOWNS_MS[ability];
+      if (cooldownMs && cooldownMs < maxDurationMs) {
+        // Check if this ability is actually on cooldown
+        const elapsed = Date.now() - lastUsed;
+        if (elapsed < cooldownMs) {
+          resetAbilities.push(ability);
+        }
+      }
+    }
+
+    // Clear the cooldowns for short-duration abilities
+    for (const ability of resetAbilities) {
+      this.abilityCooldowns.delete(ability);
+    }
+
+    if (resetAbilities.length > 0) {
+      logger.info(
+        `Reset ${resetAbilities.length} short cooldowns: ${resetAbilities.join(", ")}`,
+      );
+    } else {
+      logger.debug("No short cooldowns to reset");
+    }
+
+    return resetAbilities;
   }
 
   // ==========================================================================
@@ -219,9 +283,15 @@ export class GCDManager {
   }
 
   /**
-   * Check if a specific ability is on its individual cooldown
+   * Check if a specific ability is on its individual cooldown.
+   * Always returns false if per-ability cooldowns are disabled.
    */
   isAbilityOnCooldown(abilityName: string): boolean {
+    // If per-ability cooldowns are disabled, only GCD matters
+    if (!this.perAbilityCooldownsEnabled) {
+      return false;
+    }
+
     const upperName = abilityName.toUpperCase();
     const lastUsed = this.abilityCooldowns.get(upperName);
 
@@ -547,7 +617,7 @@ export function getGestureFallback(
  * - Not enabled
  */
 export function isEmptyBinding(
-  binding: MacroBinding | undefined | null,
+  binding: MacroBinding | OmegaMacroBinding | undefined | null,
 ): boolean {
   if (!binding) return true;
   if (!binding.enabled) return true;

@@ -61,3 +61,4 @@ class Logger {
     }
 }
 export const logger = new Logger();
+//# sourceMappingURL=logger.js.map

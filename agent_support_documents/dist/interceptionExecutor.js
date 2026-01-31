@@ -276,8 +276,8 @@ export class InterceptionExecutor {
      */
     validateSequence(sequence) {
         const errors = [];
-        // Check unique keys constraint
-        const uniqueKeys = new Set(sequence.map((s) => s.key.toLowerCase()));
+        // Check unique keys constraint (only count steps with keys)
+        const uniqueKeys = new Set(sequence.filter((s) => s.key).map((s) => s.key.toLowerCase()));
         if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
             errors.push(`Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`);
         }
@@ -285,22 +285,27 @@ export class InterceptionExecutor {
         const keyStepCount = new Map();
         // Check each step
         for (const step of sequence) {
-            // Min delay check
-            if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
-                errors.push(`Step ${step.key}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`);
+            // Skip validation for steps without timing (timer-only or scroll steps)
+            if (step.minDelay !== undefined && step.maxDelay !== undefined) {
+                // Min delay check
+                if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
+                    errors.push(`Step ${step.key || 'unknown'}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`);
+                }
+                // Variance check
+                const variance = step.maxDelay - step.minDelay;
+                if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
+                    errors.push(`Step ${step.key || 'unknown'}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`);
+                }
             }
-            // Variance check
-            const variance = step.maxDelay - step.minDelay;
-            if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
-                errors.push(`Step ${step.key}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`);
-            }
-            // Count steps per key
-            const normalizedKey = step.key.toLowerCase();
-            const current = keyStepCount.get(normalizedKey) || 0;
-            keyStepCount.set(normalizedKey, current + 1);
-            // Key mapping check
-            if (!this.getScanCodeEntry(step.key)) {
-                errors.push(`Step ${step.key}: unknown key (no scan code mapping)`);
+            // Count steps per key (only if key exists)
+            if (step.key) {
+                const normalizedKey = step.key.toLowerCase();
+                const current = keyStepCount.get(normalizedKey) || 0;
+                keyStepCount.set(normalizedKey, current + 1);
+                // Key mapping check
+                if (!this.getScanCodeEntry(step.key)) {
+                    errors.push(`Step ${step.key}: unknown key (no scan code mapping)`);
+                }
             }
         }
         // Check max steps per key
@@ -330,6 +335,10 @@ export class InterceptionExecutor {
         logger.debug(`Executing ${sequence.length} steps (Interception/kernel mode)`);
         for (let i = 0; i < sequence.length; i++) {
             const step = sequence[i];
+            // Skip steps without a key (timer-only or scroll steps)
+            if (!step.key) {
+                continue;
+            }
             // Send the key via Interception
             const success = this.sendKey(step.key);
             if (!success) {
@@ -339,7 +348,7 @@ export class InterceptionExecutor {
             logger.debug(`[${i + 1}/${sequence.length}] ${step.key} via Interception`);
             // Delay before next keypress (except after last step)
             const isLastStep = i === sequence.length - 1;
-            if (!isLastStep) {
+            if (!isLastStep && step.minDelay !== undefined && step.maxDelay !== undefined) {
                 const delay = this.getRandomDelay(step.minDelay, step.maxDelay);
                 await this.preciseSleep(delay);
             }
@@ -379,24 +388,29 @@ export class MockInterceptionExecutor {
     }
     validateSequence(sequence) {
         const errors = [];
-        const uniqueKeys = new Set(sequence.map((s) => s.key.toLowerCase()));
+        const uniqueKeys = new Set(sequence.filter((s) => s.key).map((s) => s.key.toLowerCase()));
         if (uniqueKeys.size > SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS) {
             errors.push(`Too many unique keys: ${uniqueKeys.size} (max ${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS})`);
         }
         // Count STEPS per key
         const keyStepCount = new Map();
         for (const step of sequence) {
-            if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
-                errors.push(`Step ${step.key}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`);
+            // Skip validation for steps without timing
+            if (step.minDelay !== undefined && step.maxDelay !== undefined) {
+                if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
+                    errors.push(`Step ${step.key || 'unknown'}: minDelay ${step.minDelay}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms`);
+                }
+                const variance = step.maxDelay - step.minDelay;
+                if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
+                    errors.push(`Step ${step.key || 'unknown'}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`);
+                }
             }
-            const variance = step.maxDelay - step.minDelay;
-            if (variance < SEQUENCE_CONSTRAINTS.MIN_VARIANCE) {
-                errors.push(`Step ${step.key}: variance ${variance}ms < minimum ${SEQUENCE_CONSTRAINTS.MIN_VARIANCE}ms`);
+            // Count steps per key (only if key exists)
+            if (step.key) {
+                const normalizedKey = step.key.toLowerCase();
+                const current = keyStepCount.get(normalizedKey) || 0;
+                keyStepCount.set(normalizedKey, current + 1);
             }
-            // Count steps per key
-            const normalizedKey = step.key.toLowerCase();
-            const current = keyStepCount.get(normalizedKey) || 0;
-            keyStepCount.set(normalizedKey, current + 1);
         }
         // Check max steps per key
         for (const [key, count] of keyStepCount) {
@@ -423,3 +437,4 @@ export class MockInterceptionExecutor {
     }
 }
 export default InterceptionExecutor;
+//# sourceMappingURL=interceptionExecutor.js.map

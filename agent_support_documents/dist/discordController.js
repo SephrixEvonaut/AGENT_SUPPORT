@@ -270,3 +270,4 @@ export function getDiscordController() {
     }
     return discordControllerInstance;
 }
+//# sourceMappingURL=discordController.js.map

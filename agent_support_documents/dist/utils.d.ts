@@ -23,3 +23,4 @@ export declare function parseKeyWithModifiers(key: string): {
     key: string;
     modifiers: string[];
 };
+//# sourceMappingURL=utils.d.ts.map

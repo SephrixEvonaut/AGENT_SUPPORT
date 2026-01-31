@@ -282,10 +282,14 @@ export class InputListener implements IInputListener {
   private rawEventCallback:
     | ((rawName: string, state: string, rawEvent: any) => void)
     | null = null;
+  private forceStdin: boolean;
 
   constructor(callback: InputCallback) {
     this.callback = callback;
     this.delegate = new StdinInputListener(callback);
+    // Check environment variable to force stdin mode
+    this.forceStdin = process.env.INPUT_MODE === "stdin" || 
+                      process.argv.includes("--stdin");
   }
 
   /**
@@ -299,7 +303,8 @@ export class InputListener implements IInputListener {
 
   async start(): Promise<void> {
     if (!this.initialized) {
-      this.delegate = await createInputListener(this.callback, "auto");
+      const mode = this.forceStdin ? "stdin" : "auto";
+      this.delegate = await createInputListener(this.callback, mode);
       this.initialized = true;
 
       // If raw callback was set before start, apply it to the GlobalInputListener

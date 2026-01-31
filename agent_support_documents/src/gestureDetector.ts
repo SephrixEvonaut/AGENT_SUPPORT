@@ -1,14 +1,16 @@
 // ============================================================================
-// GESTURE DETECTOR - Per-key gesture detection with 12 gesture types
+// GESTURE DETECTOR - Per-key gesture detection with calibration support
 // ============================================================================
 //
 // FEATURES:
 // - Per-key isolated state machines (24 independent keys)
+// - Per-key calibrated settings (override global defaults)
 // - Simultaneous multi-key gesture detection (press W+A+1+2 at once)
 // - Press count capped at 4 (excess presses = quadruple, no long)
 // - Non-blocking async-friendly design for concurrent sequences
 // - Settings-driven timing (reads from GestureSettings)
 // - Await jail prevents accidental triggers after triple/quadruple
+// - Hot-reload support for live threshold updates
 //
 // ============================================================================
 
@@ -27,7 +29,7 @@ export type GestureCallback = (event: GestureEvent) => void;
 const MAX_PRESS_COUNT = 4;
 
 // Await jail durations (ms) - blocks new gestures after multi-tap
-const TRIPLE_JAIL_DURATION = 120;    // After triple, block for 120ms
+const TRIPLE_JAIL_DURATION = 120; // After triple, block for 120ms
 const QUADRUPLE_JAIL_DURATION = 200; // After quadruple, block for 200ms
 
 interface PressRecord {
@@ -43,7 +45,8 @@ interface PressRecord {
 // ============================================================================
 class KeyGestureStateMachine {
   private key: InputKey;
-  private settings: GestureSettings;
+  private globalSettings: GestureSettings;
+  private keySpecificSettings: GestureSettings | null = null;
   private emitFn: (event: GestureEvent) => void;
 
   private pressHistory: PressRecord[] = [];
@@ -64,32 +67,64 @@ class KeyGestureStateMachine {
   // Await jail: after triple/quadruple, block new sequence for N ms
   private awaitJailUntil: number = 0;
 
-  // Settings-driven timing (instead of hardcoded constants)
-  private get initialWindow(): number {
-    return this.settings.multiPressWindow; // 355ms from production
-  }
-
-  // Extension window: 80% of initial window for subsequent presses
-  // This gives comfortable timing for multi-tap sequences
-  private get extensionWindow(): number {
-    return Math.round(this.settings.multiPressWindow * 0.8); // ~285ms
-  }
-
   constructor(
     key: InputKey,
-    settings: GestureSettings,
-    emitFn: (event: GestureEvent) => void
+    globalSettings: GestureSettings,
+    emitFn: (event: GestureEvent) => void,
   ) {
     this.key = key;
-    this.settings = settings;
+    this.globalSettings = globalSettings;
     this.emitFn = emitFn;
   }
 
   /**
-   * Update settings at runtime (e.g., when profile changes)
+   * Get the active settings (key-specific or global fallback)
    */
-  updateSettings(settings: GestureSettings): void {
-    this.settings = settings;
+  private getActiveSettings(): GestureSettings {
+    return this.keySpecificSettings || this.globalSettings;
+  }
+
+  /**
+   * Settings-driven timing (instead of hardcoded constants)
+   */
+  private get initialWindow(): number {
+    return this.getActiveSettings().multiPressWindow;
+  }
+
+  /**
+   * Extension window: 80% of initial window for subsequent presses
+   * This gives comfortable timing for multi-tap sequences
+   */
+  private get extensionWindow(): number {
+    return Math.round(this.getActiveSettings().multiPressWindow * 0.8);
+  }
+
+  /**
+   * Update global settings at runtime (e.g., when profile changes)
+   */
+  updateGlobalSettings(settings: GestureSettings): void {
+    this.globalSettings = settings;
+  }
+
+  /**
+   * Set key-specific settings (overrides global)
+   */
+  setKeySpecificSettings(settings: GestureSettings | null): void {
+    this.keySpecificSettings = settings;
+  }
+
+  /**
+   * Get the currently active settings for this key
+   */
+  getSettings(): GestureSettings {
+    return this.getActiveSettings();
+  }
+
+  /**
+   * Check if this key has custom settings
+   */
+  hasCustomSettings(): boolean {
+    return this.keySpecificSettings !== null;
   }
 
   private clearTimers(): void {
@@ -133,16 +168,16 @@ class KeyGestureStateMachine {
     // Helper to map count + pressType -> gesture string
     const mapGesture = (
       n: number,
-      type: PressRecord["pressType"]
+      type: PressRecord["pressType"],
     ): GestureType => {
       const base =
         n === 1
           ? "single"
           : n === 2
-          ? "double"
-          : n === 3
-          ? "triple"
-          : "quadruple";
+            ? "double"
+            : n === 3
+              ? "triple"
+              : "quadruple";
       if (type === "normal") return base as GestureType;
       if (type === "long") return `${base}_long` as GestureType;
       return `${base}_super_long` as GestureType;
@@ -233,8 +268,10 @@ class KeyGestureStateMachine {
       return;
     }
 
+    const settings = this.getActiveSettings();
+
     // If hold exceeded cancel threshold, nullify only this key's recording
-    if (holdDuration >= this.settings.cancelThreshold) {
+    if (holdDuration >= settings.cancelThreshold) {
       this.pressHistory.length = 0;
       this.windowDeadline = null;
       this.waitingForRelease = false;
@@ -244,13 +281,13 @@ class KeyGestureStateMachine {
     // Determine press type for this tap based on holdDuration (settings-driven)
     let pressType: PressRecord["pressType"] = "normal";
     if (
-      holdDuration >= this.settings.longPressMin &&
-      holdDuration <= this.settings.longPressMax
+      holdDuration >= settings.longPressMin &&
+      holdDuration <= settings.longPressMax
     ) {
       pressType = "long";
     } else if (
-      holdDuration >= this.settings.superLongMin &&
-      holdDuration <= this.settings.superLongMax
+      holdDuration >= settings.superLongMin &&
+      holdDuration <= settings.superLongMax
     ) {
       pressType = "super_long";
     }
@@ -330,14 +367,18 @@ export class GestureDetector {
   private machines: Map<InputKey, KeyGestureStateMachine> = new Map();
   private _callback: GestureCallback;
   private listeners: Set<GestureCallback> = new Set();
-  private settings: GestureSettings;
-  private eventQueue: Array<{ type: "down" | "up"; key: string; timestamp: number }> = [];
+  private globalSettings: GestureSettings;
+  private eventQueue: Array<{
+    type: "down" | "up";
+    key: string;
+    timestamp: number;
+  }> = [];
   private processingQueue: boolean = false;
   private checkInterval: ReturnType<typeof setInterval> | null = null;
   private isStopped: boolean = false;
 
   constructor(settings: GestureSettings, callback: GestureCallback) {
-    this.settings = settings;
+    this.globalSettings = settings;
     this._callback = callback;
 
     // Create a state machine for each input key
@@ -360,7 +401,7 @@ export class GestureDetector {
               // swallow listener errors
             }
           }
-        })
+        }),
       );
     }
 
@@ -487,7 +528,7 @@ export class GestureDetector {
       // Warn if queue is getting large (potential issue)
       if (this.eventQueue.length > 50) {
         console.warn(
-          `⚠️  Event queue building up: ${this.eventQueue.length} events`
+          `⚠️  Event queue building up: ${this.eventQueue.length} events`,
         );
       }
     }
@@ -535,10 +576,10 @@ export class GestureDetector {
   }
 
   /**
-   * Update gesture settings for all machines
+   * Update global gesture settings for all machines
    */
   updateSettings(settings: GestureSettings): void {
-    this.settings = settings;
+    this.globalSettings = settings;
 
     // Clear existing interval
     if (this.checkInterval) {
@@ -546,15 +587,96 @@ export class GestureDetector {
       this.checkInterval = null;
     }
 
-    // Update each machine's settings
+    // Update each machine's global settings
     for (const machine of this.machines.values()) {
-      machine.updateSettings(settings);
+      machine.updateGlobalSettings(settings);
     }
 
     // Restart interval with 20ms check time
     this.checkInterval = setInterval(() => {
       this.checkAllPendingGestures();
     }, 20);
+  }
+
+  // ==========================================================================
+  // PER-KEY CALIBRATION SUPPORT
+  // ==========================================================================
+
+  /**
+   * Update settings for a specific key (hot-reload support)
+   * This overrides the global settings for this key only
+   */
+  updateKeyProfile(key: InputKey, settings: GestureSettings): void {
+    const machine = this.machines.get(key);
+    if (machine) {
+      machine.setKeySpecificSettings(settings);
+      console.log(`✅ Updated ${key} profile`);
+    } else {
+      console.warn(`⚠️  Key ${key} not found`);
+    }
+  }
+
+  /**
+   * Clear key-specific settings (revert to global)
+   */
+  clearKeyProfile(key: InputKey): void {
+    const machine = this.machines.get(key);
+    if (machine) {
+      machine.setKeySpecificSettings(null);
+      console.log(`🔄 Cleared ${key} profile (using global settings)`);
+    }
+  }
+
+  /**
+   * Get the active profile for a specific key
+   */
+  getKeyProfile(key: InputKey): GestureSettings | null {
+    const machine = this.machines.get(key);
+    return machine ? machine.getSettings() : null;
+  }
+
+  /**
+   * Get all key profiles (for export/status)
+   */
+  getAllProfiles(): Record<string, GestureSettings> {
+    const profiles: Record<string, GestureSettings> = {};
+
+    for (const [key, machine] of this.machines) {
+      profiles[key] = machine.getSettings();
+    }
+
+    return profiles;
+  }
+
+  /**
+   * Get keys that have custom (non-global) settings
+   */
+  getCustomizedKeys(): InputKey[] {
+    const customized: InputKey[] = [];
+
+    for (const [key, machine] of this.machines) {
+      if (machine.hasCustomSettings()) {
+        customized.push(key);
+      }
+    }
+
+    return customized;
+  }
+
+  /**
+   * Load multiple key profiles at once
+   */
+  loadKeyProfiles(profiles: Record<string, GestureSettings>): void {
+    for (const [key, settings] of Object.entries(profiles)) {
+      this.updateKeyProfile(key as InputKey, settings);
+    }
+  }
+
+  /**
+   * Get the global (default) settings
+   */
+  getGlobalSettings(): GestureSettings {
+    return { ...this.globalSettings };
   }
 
   /**

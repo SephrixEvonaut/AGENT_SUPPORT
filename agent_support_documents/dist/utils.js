@@ -56,3 +56,4 @@ export function parseKeyWithModifiers(key) {
     }
     return { key: base, modifiers };
 }
+//# sourceMappingURL=utils.js.map

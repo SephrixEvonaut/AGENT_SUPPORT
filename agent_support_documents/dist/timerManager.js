@@ -131,3 +131,4 @@ export class TimerManager {
         this.cancelAllTimers();
     }
 }
+//# sourceMappingURL=timerManager.js.map

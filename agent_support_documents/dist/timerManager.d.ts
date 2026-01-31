@@ -47,3 +47,4 @@ export declare class TimerManager {
      */
     shutdown(): void;
 }
+//# sourceMappingURL=timerManager.d.ts.map

@@ -5,13 +5,17 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "start": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "start:dev": "tsx src/index.ts",
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",
     "manifest:validate": "tsx scripts/manifestSync.ts --validate",
     "manifest:export": "tsx scripts/manifestSync.ts --export",
-    "manifest:import": "tsx scripts/manifestSync.ts --import"
+    "manifest:import": "tsx scripts/manifestSync.ts --import",
+    "calibrate": "node dist/calibrationCli.js",
+    "calibrate:hot": "node dist/calibrationCli.js --hot-reload",
+    "calibrate:quick": "node dist/calibrationCli.js --quick"
   },
   "dependencies": {
     "node-global-key-listener": "^0.3.0",

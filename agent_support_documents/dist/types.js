@@ -1,7 +1,7 @@
 // ============================================================================
 // SWTOR MACRO AGENT - TYPE DEFINITIONS
 // ============================================================================
-// 23 Input Keys for gesture detection
+// 27 Input Keys for gesture detection (added E, F, G, NUMPAD8 for Omega D-key triggers)
 export const INPUT_KEYS = [
     // Letters (Azeron finger keys)
     "W",
@@ -16,6 +16,10 @@ export const INPUT_KEYS = [
     "C",
     "H",
     "P",
+    // D-key only input keys (Omega system - only valid during D hold)
+    "E",
+    "F",
+    "G",
     // Function key
     "F2",
     // Number keys
@@ -28,8 +32,12 @@ export const INPUT_KEYS = [
     "7",
     "8",
     "9",
+    // Special keys
+    "=",
     // Venus mouse
     "MIDDLE_CLICK",
+    // Numpad (for D-key triggers in Omega)
+    "NUMPAD8",
 ];
 // 37 Output keys available for emission (letters, punctuation, function, numpad, special)
 export const OUTPUT_KEYS = [
@@ -99,3 +107,4 @@ export const SEQUENCE_CONSTRAINTS = {
     MAX_UNIQUE_KEYS: 6, // Maximum 6 unique keys per sequence
     MAX_STEPS_PER_KEY: 6, // Maximum 6 steps per key
 };
+//# sourceMappingURL=types.js.map

@@ -1,4 +1,5 @@
 import { MacroProfile, GestureSettings, CompiledProfile } from "./types.js";
+import { KeyProfile } from "./calibrationTypes.js";
 export declare const DEFAULT_GESTURE_SETTINGS: GestureSettings;
 interface ValidationResult {
     valid: boolean;
@@ -8,6 +9,7 @@ interface ValidationResult {
 export declare class ProfileLoader {
     private profileDir;
     private lastCompiled;
+    private keyProfiles;
     constructor(profileDir?: string);
     /**
      * Validate a macro binding
@@ -19,12 +21,26 @@ export declare class ProfileLoader {
     validateProfile(profile: MacroProfile): ValidationResult;
     /**
      * Load a profile from JSON file
+     * Supports both legacy profiles and calibrated profiles with keyProfiles
+     * Also supports Omega-style profiles with 'bindings' instead of 'macros'
      */
     loadProfile(filename: string): MacroProfile | null;
     /**
      * Get the last compiled profile (if any)
      */
     getCompiledProfile(): CompiledProfile | null;
+    /**
+     * Get loaded key profiles for gesture detector
+     */
+    getKeyProfiles(): Map<string, KeyProfile>;
+    /**
+     * Check if profile has calibration data
+     */
+    hasCalibrationData(): boolean;
+    /**
+     * Get calibration confidence for a specific key
+     */
+    getKeyConfidence(key: string): number | null;
     /**
      * List all available profiles
      */
@@ -35,3 +51,4 @@ export declare class ProfileLoader {
     saveProfile(profile: MacroProfile, filename: string): boolean;
 }
 export {};
+//# sourceMappingURL=profileLoader.d.ts.map

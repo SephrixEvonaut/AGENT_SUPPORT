@@ -223,7 +223,9 @@ describe("GCDManager", () => {
       const binding3 = createBinding("Sweeping Slash");
 
       gcdManager.tryExecute(binding1); // Starts GCD, executes
+      await wait(5); // Small delay to ensure different timestamps
       gcdManager.tryExecute(binding2); // Queued
+      await wait(5); // Small delay to ensure different timestamps
       gcdManager.tryExecute(binding3); // Queued (most recent)
 
       expect(gcdManager.getStats().queueSize).toBe(2);
@@ -409,7 +411,7 @@ describe("Ability Cooldown Configuration", () => {
     expect(ABILITY_COOLDOWNS_MS.FORCE_PUSH).toBe(50000);
   });
 
-  test("GCD duration is 1.385 seconds", () => {
-    expect(GCD_DURATION_MS).toBe(1385);
+  test("GCD duration is 1.275 seconds", () => {
+    expect(GCD_DURATION_MS).toBe(1275);
   });
 });

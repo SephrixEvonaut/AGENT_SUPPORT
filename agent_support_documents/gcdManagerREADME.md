@@ -4,7 +4,7 @@
 
 The GCD (Global Cooldown) system emulates SWTOR's ability timing:
 
-- **1.385 second global cooldown** after any GCD ability
+- **1.275 second global cooldown** after any GCD ability
 - **Per-ability cooldowns** that must expire before reuse
 - **Queue system** - most recent gesture wins when GCD ends
 - **Gesture fallback** - long ↔ super_long when one is unbound
@@ -13,7 +13,7 @@ The GCD (Global Cooldown) system emulates SWTOR's ability timing:
 
 ## GCD Abilities
 
-These abilities trigger the 1.385s global cooldown:
+These abilities trigger the 1.275s global cooldown:
 
 | Ability         | Individual CD | Notes            |
 | --------------- | ------------- | ---------------- |

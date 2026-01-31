@@ -5,10 +5,18 @@
 // FEATURES:
 // - Multiple concurrent sequences (different bindings run in parallel)
 // - Per-binding execution tracking (same binding won't overlap)
-// - Human-like timing with configurable randomization
+// - Human-like timing with sophisticated multi-layer randomization
 // - Non-blocking async execution
 // - Discord volume/mic control integration
 // - TTS timer system
+// - NEW: Direct timer field support for Omega system
+//
+// RANDOMIZATION SYSTEM:
+// Uses HumanRandomizer for all timing values which provides:
+// - Hash-based pseudo-randomness (appears random, deterministic)
+// - Gaussian bias toward "sweet spot" values humans naturally produce
+// - History-based "correction" that reinforces natural distributions
+// - Multi-layer obfuscation that resists statistical detection
 //
 // ============================================================================
 import robot from "robotjs";
@@ -18,16 +26,21 @@ import { TrafficController } from "./trafficController.js";
 import { TimerManager } from "./timerManager.js";
 import { getDiscordController } from "./discordController.js";
 import { logger } from "./logger.js";
+import { getHumanBufferDelay, getHumanKeyDownDuration, getHumanEchoHitDuration, getHumanReleaseDelay, getHumanDualKeyOffset, getHumanDelay, calculateBufferExtension, } from "./humanRandomizer.js";
 export class SequenceExecutor {
     // Per-binding execution state - allows DIFFERENT bindings to run concurrently
     // but prevents the SAME binding from overlapping with itself
     isExecuting = new Map();
     // Track all active executions for monitoring
     activeExecutions = new Set();
+    // Global shutdown flag - stops all async operations immediately
+    isShutdown = false;
     callback;
     compiledProfile = null;
     trafficController = null;
     timerManager;
+    // Abort controllers for cancellable sleeps
+    sleepAbortController = null;
     // Track held modifiers from holdThroughNext steps
     heldModifier = null;
     constructor(callback, compiledProfile) {
@@ -40,6 +53,7 @@ export class SequenceExecutor {
         logger.debug("SequenceExecutor initialized");
         logger.debug("Concurrent sequences: ENABLED (different bindings run in parallel)");
         logger.debug("Per-binding overlap: PREVENTED (same binding won't stack)");
+        logger.debug("Randomization: HUMAN-LIKE (multi-layer obfuscation)");
     }
     /**
      * Provide a compiled profile to enable traffic control.
@@ -52,13 +66,33 @@ export class SequenceExecutor {
      * Validate a sequence step meets timing constraints
      */
     validateStep(step, stepIndex) {
+        // Timer-only steps have minimal validation
+        if (step.timer && !step.key) {
+            if (!step.timer.id ||
+                !step.timer.message ||
+                step.timer.durationSeconds <= 0) {
+                return `Step ${stepIndex}: timer must have id, message, and positive durationSeconds`;
+            }
+            return null;
+        }
+        // Scroll steps have simpler validation
+        if (step.scrollDirection) {
+            if (!["up", "down"].includes(step.scrollDirection)) {
+                return `Step ${stepIndex}: scrollDirection must be "up" or "down"`;
+            }
+            return null;
+        }
+        // Steps without a key (and not timer/scroll) are invalid
+        if (!step.key) {
+            return `Step ${stepIndex}: must have key, timer, or scrollDirection`;
+        }
         // If bufferTier is provided, we use tiered buffer delays and skip legacy min/max validation
         if (step.bufferTier) {
             if (!["low", "medium", "high"].includes(step.bufferTier)) {
                 return `Step ${stepIndex} ("${step.key}"): bufferTier must be one of low|medium|high`;
             }
         }
-        else {
+        else if (step.minDelay !== undefined && step.maxDelay !== undefined) {
             if (step.minDelay < SEQUENCE_CONSTRAINTS.MIN_DELAY) {
                 return `Step ${stepIndex} ("${step.key}"): minDelay must be >= ${SEQUENCE_CONSTRAINTS.MIN_DELAY}ms (got ${step.minDelay}ms)`;
             }
@@ -88,6 +122,9 @@ export class SequenceExecutor {
         }
         const keyStepCount = new Map();
         for (const step of sequence) {
+            // Skip scroll steps and timer-only steps which don't have a key
+            if (step.scrollDirection || !step.key)
+                continue;
             const normalizedKey = step.key.toLowerCase();
             const count = keyStepCount.get(normalizedKey) || 0;
             keyStepCount.set(normalizedKey, count + 1);
@@ -101,40 +138,6 @@ export class SequenceExecutor {
             }
         }
         return null;
-    }
-    /**
-     * Get randomized delay between min and max (inclusive)
-     * Uses uniform distribution
-     */
-    getRandomDelay(min, max) {
-        return Math.floor(Math.random() * (max - min + 1)) + min;
-    }
-    /**
-     * Get weighted random keyDownDuration
-     * Special weights: 37ms=10%, 29ms=10%, 23ms=1%
-     * Remaining 79% distributed equally among other values in range
-     */
-    getWeightedKeyDownDuration(min, max) {
-        const roll = Math.random() * 100;
-        // Special weighted values (only if within range)
-        if (roll < 10 && max >= 37 && min <= 37)
-            return 37;
-        if (roll < 20 && max >= 29 && min <= 29)
-            return 29;
-        if (roll < 21 && max >= 23 && min <= 23)
-            return 23;
-        // Remaining 79%: uniform distribution over the range (excluding weighted values)
-        const excludeSet = new Set([23, 29, 37]);
-        const candidates = [];
-        for (let v = min; v <= max; v++) {
-            if (!excludeSet.has(v))
-                candidates.push(v);
-        }
-        // If no candidates (edge case), fall back to uniform
-        if (candidates.length === 0) {
-            return Math.floor(Math.random() * (max - min + 1)) + min;
-        }
-        return candidates[Math.floor(Math.random() * candidates.length)];
     }
     /**
      * Map our profile key names to RobotJS key names
@@ -194,18 +197,35 @@ export class SequenceExecutor {
         return { key: base, modifiers };
     }
     /**
-     * Buffer tier ranges (inclusive)
+     * Buffer tier ranges (inclusive) - base ranges for human randomizer
+     * Actual values selected using sophisticated multi-layer randomization
      */
     bufferRanges = {
-        low: [11, 17],
-        medium: [15, 24],
-        high: [980, 1270],
+        low: [129, 163],
+        medium: [229, 263],
+        high: [513, 667],
     };
     /**
-     * Sleep for specified milliseconds
+     * Sleep for specified milliseconds (cancellable - aborts immediately on shutdown)
      */
     sleep(ms) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
+        return new Promise((resolve) => {
+            if (this.isShutdown) {
+                resolve();
+                return;
+            }
+            const timeoutId = setTimeout(resolve, ms);
+            // Store timeout for potential cancellation
+            const checkShutdown = setInterval(() => {
+                if (this.isShutdown) {
+                    clearTimeout(timeoutId);
+                    clearInterval(checkShutdown);
+                    resolve();
+                }
+            }, 5); // Check every 5ms for shutdown
+            // Also clear interval when timeout completes normally
+            setTimeout(() => clearInterval(checkShutdown), ms + 10);
+        });
     }
     /**
      * Send a single keypress
@@ -256,11 +276,60 @@ export class SequenceExecutor {
         }
     }
     /**
+     * Grant supremacy to a macro - it bypasses traffic control entirely
+     * Use for high-priority macros that should never wait
+     */
+    grantSupremacy(macroName) {
+        if (this.trafficController) {
+            this.trafficController.grantSupremacy(macroName);
+        }
+    }
+    /**
+     * Revoke supremacy from a macro
+     */
+    revokeSupremacy(macroName) {
+        if (this.trafficController) {
+            this.trafficController.revokeSupremacy(macroName);
+        }
+    }
+    /**
+     * Get list of macros with supremacy
+     */
+    getSupremacyList() {
+        return this.trafficController?.getSupremacyList() || [];
+    }
+    /**
+     * Destroy the executor - stops all operations and prevents new ones
+     */
+    destroy() {
+        this.isShutdown = true;
+        // Cancel all bindings first
+        this.cancelAll();
+        // Cancel any timers
+        this.timerManager.cancelAllTimers();
+        // Release any held keys immediately
+        if (this.heldModifier) {
+            try {
+                robot.keyToggle(this.heldModifier.key, "up", this.heldModifier.modifiers);
+            }
+            catch (e) {
+                /* ignore */
+            }
+            this.heldModifier = null;
+        }
+        // Clear all state
+        this.activeExecutions.clear();
+        this.isExecuting.clear();
+    }
+    /**
      * Execute a macro binding's sequence (fire-and-forget)
      * This method launches the execution as a detached promise, allowing
      * multiple different bindings to run simultaneously.
      */
     executeDetached(binding) {
+        // Check if shutdown in progress
+        if (this.isShutdown)
+            return;
         // Check if this specific binding is already executing
         if (this.isExecuting.get(binding.name)) {
             logger.warn(`"${binding.name}" already executing, skipping...`);
@@ -268,7 +337,9 @@ export class SequenceExecutor {
         }
         // Launch as detached promise (don't await - allows concurrency)
         this.executeInternal(binding).catch((error) => {
-            logger.error(`Detached execution error for "${binding.name}":`, error);
+            if (!this.isShutdown) {
+                logger.error(`Detached execution error for "${binding.name}":`, error);
+            }
         });
     }
     /**
@@ -276,6 +347,8 @@ export class SequenceExecutor {
      * Use this when you need to wait for completion.
      */
     async execute(binding) {
+        if (this.isShutdown)
+            return false;
         return this.executeInternal(binding);
     }
     /**
@@ -312,12 +385,73 @@ export class SequenceExecutor {
         logger.debug(`Executing: "${name}" (${sequence.length} steps) [${activeCount} active]`);
         try {
             for (let i = 0; i < sequence.length; i++) {
-                // Check if cancelled
-                if (!this.isExecuting.get(name)) {
+                // Check if cancelled or shutdown
+                if (this.isShutdown || !this.isExecuting.get(name)) {
                     logger.info(`"${name}" cancelled`);
                     return false;
                 }
                 const step = sequence[i];
+                // ================================================================
+                // TIMER-ONLY STEP HANDLING (NEW for Omega system)
+                // ================================================================
+                if (step.timer && !step.key && !step.scrollDirection) {
+                    // This is a timer-only step - start timer and continue
+                    logger.debug(`Timer step: ${step.timer.id} (${step.timer.durationSeconds}s) → "${step.timer.message}"`);
+                    this.timerManager.startTimer(step.timer.id, step.timer.durationSeconds, step.timer.message);
+                    // Emit step event for monitoring
+                    this.callback({
+                        type: "step",
+                        bindingName: name,
+                        step,
+                        stepIndex: i,
+                        timestamp: Date.now(),
+                    });
+                    // Apply delay for next step if specified
+                    if (step.bufferTier) {
+                        const delay = getHumanBufferDelay(step.bufferTier);
+                        if (delay > 0)
+                            await this.sleep(delay);
+                    }
+                    else if (step.minDelay && step.maxDelay) {
+                        const delay = getHumanDelay(step.minDelay, step.maxDelay, "timer_delay");
+                        if (delay > 0)
+                            await this.sleep(delay);
+                    }
+                    continue; // Skip keypress logic
+                }
+                // ================================================================
+                // SCROLL HANDLING
+                // ================================================================
+                if (step.scrollDirection) {
+                    const magnitude = step.scrollMagnitude ?? 3;
+                    // robotjs scrollMouse: positive y = scroll up, negative y = scroll down
+                    const scrollY = step.scrollDirection === "down" ? -magnitude : magnitude;
+                    logger.debug(`Scroll ${step.scrollDirection}: ${magnitude} units`);
+                    robot.scrollMouse(0, scrollY);
+                    // Emit step event for monitoring
+                    this.callback({
+                        type: "step",
+                        bindingName: name,
+                        step,
+                        stepIndex: i,
+                        timestamp: Date.now(),
+                    });
+                    // Apply delay for next step using human-like randomization
+                    const delay = step.bufferTier
+                        ? getHumanBufferDelay(step.bufferTier)
+                        : getHumanDelay(step.minDelay || 25, step.maxDelay || 50, "scroll_delay");
+                    if (delay > 0)
+                        await this.sleep(delay);
+                    continue; // Skip keypress logic
+                }
+                // ================================================================
+                // KEYPRESS HANDLING (with optional timer)
+                // ================================================================
+                // If step has BOTH key and timer, start the timer first
+                if (step.timer && step.key) {
+                    logger.debug(`Key+Timer step: ${step.key} + timer ${step.timer.id} (${step.timer.durationSeconds}s)`);
+                    this.timerManager.startTimer(step.timer.id, step.timer.durationSeconds, step.timer.message);
+                }
                 // Press the key (support modifiers, hold duration, and dual keys)
                 const { key: parsedKey, modifiers } = this.parseKey(step.key);
                 // DISCORD CONTROL DETECTION: Check if this is a Discord control step
@@ -375,7 +509,8 @@ export class SequenceExecutor {
                         // For hotkey-based commands, continue to execute the actual keypress below
                     }
                 }
-                // TIMER DETECTION: Check if this is a timer step
+                // LEGACY TIMER DETECTION: Check if this is a timer step (string-based parsing)
+                // This maintains backward compatibility with Alpha profile format
                 if (parsedKey === "end" && step.name?.includes("Timer placeholder")) {
                     // Parse timer duration and message from step.name
                     // Format: "Timer placeholder - implement TTS: 'message' after N seconds"
@@ -415,12 +550,12 @@ export class SequenceExecutor {
                 if (this.compiledProfile && this.trafficController) {
                     const needsTraffic = isConundrumKey(step.key, this.compiledProfile);
                     if (needsTraffic) {
-                        await this.trafficController.requestCrossing(step.key);
+                        await this.trafficController.requestCrossing(step.key, name);
                     }
                 }
-                // Determine key down duration (default [23,38] with weighted distribution)
+                // Determine key down duration using human-like randomization
                 const kd = step.keyDownDuration || [23, 38];
-                const keyDownMs = this.getWeightedKeyDownDuration(kd[0], kd[1]);
+                const keyDownMs = getHumanKeyDownDuration(kd[0], kd[1]);
                 // Check for dual key configuration
                 const hasDualKey = step.dualKey !== undefined;
                 let dualParsedKey = null;
@@ -428,9 +563,9 @@ export class SequenceExecutor {
                 if (hasDualKey) {
                     // Parse dual key
                     dualParsedKey = this.parseKey(step.dualKey);
-                    // Determine dual key hold duration (defaults to primary key duration)
+                    // Determine dual key hold duration using human-like randomization
                     const dualKd = step.dualKeyDownDuration || kd;
-                    dualKeyDownMs = this.getWeightedKeyDownDuration(dualKd[0], dualKd[1]);
+                    dualKeyDownMs = getHumanKeyDownDuration(dualKd[0], dualKd[1]);
                 }
                 // PRIMARY KEY DOWN
                 try {
@@ -441,6 +576,16 @@ export class SequenceExecutor {
                     // Fallback to keyTap if keyToggle unsupported for this key
                     this.pressKey(step.key);
                 }
+                // Emergency key release on shutdown
+                if (this.isShutdown) {
+                    try {
+                        robot.keyToggle(parsedKey, "up", modifiers);
+                    }
+                    catch (e) {
+                        /* ignore */
+                    }
+                    return false;
+                }
                 this.callback({
                     type: "step",
                     bindingName: name,
@@ -450,10 +595,21 @@ export class SequenceExecutor {
                 });
                 if (hasDualKey) {
                     // DUAL KEY MODE: Press second key after offset
-                    const offsetMs = step.dualKeyOffsetMs ?? 6; // Default 6ms offset
+                    // Use human-like randomization for offset (4-10ms range instead of fixed 6)
+                    const offsetMs = step.dualKeyOffsetMs ?? getHumanDualKeyOffset();
                     logger.debug(`[${i + 1}/${sequence.length}] Pressed "${step.key}" + "${step.dualKey}" (dual) primary=${keyDownMs}ms, dual=${dualKeyDownMs}ms, offset=${offsetMs}ms`);
                     // Wait for offset before pressing dual key
                     await this.sleep(offsetMs);
+                    // Emergency release primary on shutdown
+                    if (this.isShutdown) {
+                        try {
+                            robot.keyToggle(parsedKey, "up", modifiers);
+                        }
+                        catch (e) {
+                            /* ignore */
+                        }
+                        return false;
+                    }
                     // DUAL KEY DOWN
                     try {
                         robot.keyToggle(dualParsedKey.key, "down", dualParsedKey.modifiers.length === 0
@@ -464,9 +620,45 @@ export class SequenceExecutor {
                         // Fallback to keyTap if keyToggle unsupported
                         this.pressKey(step.dualKey);
                     }
+                    // Emergency release both on shutdown
+                    if (this.isShutdown) {
+                        try {
+                            robot.keyToggle(parsedKey, "up", modifiers);
+                        }
+                        catch (e) {
+                            /* ignore */
+                        }
+                        try {
+                            robot.keyToggle(dualParsedKey.key, "up", dualParsedKey.modifiers.length === 0
+                                ? undefined
+                                : dualParsedKey.modifiers);
+                        }
+                        catch (e) {
+                            /* ignore */
+                        }
+                        return false;
+                    }
                     // Hold primary key for remaining duration (already held for offsetMs)
                     const primaryRemainingMs = Math.max(0, keyDownMs - offsetMs);
                     await this.sleep(primaryRemainingMs);
+                    // Emergency release both on shutdown
+                    if (this.isShutdown) {
+                        try {
+                            robot.keyToggle(parsedKey, "up", modifiers);
+                        }
+                        catch (e) {
+                            /* ignore */
+                        }
+                        try {
+                            robot.keyToggle(dualParsedKey.key, "up", dualParsedKey.modifiers.length === 0
+                                ? undefined
+                                : dualParsedKey.modifiers);
+                        }
+                        catch (e) {
+                            /* ignore */
+                        }
+                        return false;
+                    }
                     // PRIMARY KEY UP (releases first)
                     try {
                         // Must pass modifiers array (even if empty) - Windows RobotJS bug with undefined
@@ -479,6 +671,18 @@ export class SequenceExecutor {
                     const dualRemainingMs = Math.max(0, dualKeyDownMs - (offsetMs + primaryRemainingMs));
                     if (dualRemainingMs > 0) {
                         await this.sleep(dualRemainingMs);
+                        // Emergency release dual on shutdown
+                        if (this.isShutdown) {
+                            try {
+                                robot.keyToggle(dualParsedKey.key, "up", dualParsedKey.modifiers.length === 0
+                                    ? undefined
+                                    : dualParsedKey.modifiers);
+                            }
+                            catch (e) {
+                                /* ignore */
+                            }
+                            return false;
+                        }
                     }
                     // DUAL KEY UP (releases second)
                     try {
@@ -495,6 +699,16 @@ export class SequenceExecutor {
                     logger.debug(`[${i + 1}/${sequence.length}] Pressed "${step.key}" held ${keyDownMs}ms`);
                     // Hold duration
                     await this.sleep(keyDownMs);
+                    // Emergency release on shutdown
+                    if (this.isShutdown) {
+                        try {
+                            robot.keyToggle(parsedKey, "up", modifiers);
+                        }
+                        catch (e) {
+                            /* ignore */
+                        }
+                        return false;
+                    }
                     // Check if this step should hold through next step
                     if (step.holdThroughNext) {
                         // Store held modifier info for release during next step's buffer
@@ -530,12 +744,17 @@ export class SequenceExecutor {
                 if (!isLastStep) {
                     let delay;
                     if (step.bufferTier) {
-                        const range = this.bufferRanges[step.bufferTier];
-                        delay = this.getRandomDelay(range[0], range[1]);
+                        // Use human-like buffer delay
+                        delay = getHumanBufferDelay(step.bufferTier);
+                    }
+                    else if (step.minDelay !== undefined &&
+                        step.maxDelay !== undefined) {
+                        // Fall back to human-like delay with legacy min/max
+                        delay = getHumanDelay(step.minDelay, step.maxDelay, "legacy_buffer");
                     }
                     else {
-                        // Fall back to legacy minDelay/maxDelay if bufferTier not provided
-                        delay = this.getRandomDelay(step.minDelay, step.maxDelay);
+                        // Default buffer delay
+                        delay = getHumanBufferDelay("low");
                     }
                     this.callback({
                         type: "step",
@@ -546,9 +765,87 @@ export class SequenceExecutor {
                         timestamp: Date.now(),
                     });
                     console.log(`     ⏱️  Waiting ${delay}ms...`);
+                    // ECHO HITS: Rapid repeat keypresses during buffer phase
+                    // WITH: Buffer-tier-aware timing and intelligent buffer extension
+                    if (step.echoHits &&
+                        step.echoHits.count > 0 &&
+                        step.echoHits.windowMs > 0) {
+                        const echoCount = step.echoHits.count;
+                        const echoWindowMs = step.echoHits.windowMs;
+                        // Determine buffer tier for echo timing (default to "low" if not specified)
+                        const echoBufferTier = step.bufferTier || "low";
+                        // Calculate if buffer extension is needed
+                        const extensionResult = calculateBufferExtension(echoCount, echoBufferTier, delay);
+                        // Apply buffer extension if needed
+                        let effectiveDelay = delay;
+                        if (extensionResult.needsExtension) {
+                            effectiveDelay = delay + extensionResult.extensionMs;
+                            logger.debug(`Buffer extension applied: +${extensionResult.extensionMs}ms ` +
+                                `(${extensionResult.reason}). Effective buffer: ${effectiveDelay}ms`);
+                        }
+                        // Calculate echo interval based on echo window
+                        const echoIntervalMs = Math.floor(echoWindowMs / (echoCount + 1));
+                        logger.debug(`Echo hits [${echoBufferTier.toUpperCase()}]: ${echoCount} repeats of "${step.key}" ` +
+                            `within ${echoWindowMs}ms (interval ~${echoIntervalMs}ms, buffer=${effectiveDelay}ms)`);
+                        for (let e = 0; e < echoCount; e++) {
+                            // Wait for echo interval
+                            await this.sleep(echoIntervalMs);
+                            if (this.isShutdown)
+                                return false;
+                            // Get buffer-tier-aware echo hold duration
+                            const echoHoldMs = getHumanEchoHitDuration(echoBufferTier);
+                            try {
+                                robot.keyToggle(parsedKey, "down", modifiers);
+                                await this.sleep(echoHoldMs);
+                                if (this.isShutdown) {
+                                    try {
+                                        robot.keyToggle(parsedKey, "up", modifiers);
+                                    }
+                                    catch (e) { }
+                                    return false;
+                                }
+                                robot.keyToggle(parsedKey, "up", modifiers);
+                            }
+                            catch (err) {
+                                // Fallback to keyTap
+                                this.pressKey(step.key);
+                            }
+                            logger.debug(`  Echo ${e + 1}/${echoCount}: "${step.key}" held ${echoHoldMs}ms [${echoBufferTier}]`);
+                        }
+                        // Calculate remaining buffer time after echo hits
+                        const echoTimeUsed = echoIntervalMs * echoCount;
+                        const remainingBufferAfterEcho = Math.max(0, effectiveDelay - echoTimeUsed);
+                        // Handle held modifier release if applicable
+                        if (this.heldModifier && i > 0) {
+                            const releaseDelay = getHumanReleaseDelay(this.heldModifier.releaseDelayMin, this.heldModifier.releaseDelayMax);
+                            if (remainingBufferAfterEcho >= releaseDelay) {
+                                await this.sleep(releaseDelay);
+                                logger.debug(`Releasing held modifier after ${releaseDelay}ms of remaining buffer`);
+                                try {
+                                    robot.keyToggle(this.heldModifier.key, "up", this.heldModifier.modifiers.length === 0
+                                        ? undefined
+                                        : this.heldModifier.modifiers);
+                                }
+                                catch (err) {
+                                    /* ignore */
+                                }
+                                this.heldModifier = null;
+                                const finalRemaining = remainingBufferAfterEcho - releaseDelay;
+                                if (finalRemaining > 0) {
+                                    await this.sleep(finalRemaining);
+                                }
+                            }
+                            else {
+                                await this.sleep(remainingBufferAfterEcho);
+                            }
+                        }
+                        else if (remainingBufferAfterEcho > 0) {
+                            await this.sleep(remainingBufferAfterEcho);
+                        }
+                    }
                     // If there's a held modifier from the previous step, release it partway through this buffer
-                    if (this.heldModifier && i > 0) {
-                        const releaseDelay = this.getRandomDelay(this.heldModifier.releaseDelayMin, this.heldModifier.releaseDelayMax);
+                    else if (this.heldModifier && i > 0) {
+                        const releaseDelay = getHumanReleaseDelay(this.heldModifier.releaseDelayMin, this.heldModifier.releaseDelayMax);
                         // Wait for the release delay first
                         await this.sleep(releaseDelay);
                         // Release the held modifier
@@ -576,7 +873,7 @@ export class SequenceExecutor {
                 }
                 else if (this.heldModifier) {
                     // Last step and there's a held modifier - release it after its configured delay
-                    const releaseDelay = this.getRandomDelay(this.heldModifier.releaseDelayMin, this.heldModifier.releaseDelayMax);
+                    const releaseDelay = getHumanReleaseDelay(this.heldModifier.releaseDelayMin, this.heldModifier.releaseDelayMax);
                     await this.sleep(releaseDelay);
                     logger.debug(`Releasing held modifier after ${releaseDelay}ms (last step)`);
                     try {
@@ -640,7 +937,9 @@ export class SequenceExecutor {
         console.log(`\n🧪 DRY RUN: "${name}" (${sequence.length} steps)`);
         const keyCount = new Map();
         for (const step of sequence) {
-            keyCount.set(step.key, (keyCount.get(step.key) || 0) + 1);
+            if (step.key) {
+                keyCount.set(step.key, (keyCount.get(step.key) || 0) + 1);
+            }
         }
         logger.info(`Unique keys: ${keyCount.size}/${SEQUENCE_CONSTRAINTS.MAX_UNIQUE_KEYS}`);
         logger.info(`Total key presses: ${sequence.length}`);
@@ -651,11 +950,14 @@ export class SequenceExecutor {
         let totalMaxTime = 0;
         for (let i = 0; i < sequence.length; i++) {
             const step = sequence[i];
-            logger.info(`[${i + 1}] "${step.key}" → wait ${step.minDelay}-${step.maxDelay}ms`);
+            const keyDisplay = step.key || (step.timer ? `[Timer: ${step.timer.id}]` : "[Scroll]");
+            const delayMin = step.minDelay ?? 0;
+            const delayMax = step.maxDelay ?? 0;
+            logger.info(`[${i + 1}] "${keyDisplay}" → wait ${delayMin}-${delayMax}ms`);
             const isLastStep = i === sequence.length - 1;
             if (!isLastStep) {
-                totalMinTime += step.minDelay;
-                totalMaxTime += step.maxDelay;
+                totalMinTime += delayMin;
+                totalMaxTime += delayMax;
             }
         }
         console.log(`   ⏱️  Total time: ${totalMinTime}-${totalMaxTime}ms\n`);
@@ -669,3 +971,4 @@ export class SequenceExecutor {
         this.timerManager.shutdown();
     }
 }
+//# sourceMappingURL=sequenceExecutor.js.map

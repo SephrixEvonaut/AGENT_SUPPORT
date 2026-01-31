@@ -1,12 +1,49 @@
-import { randomRange, sleep, extractRawKey } from "./utils.js";
+import { extractRawKey } from "./utils.js";
+import { getHumanTrafficWait } from "./humanRandomizer.js";
+/**
+ * Sleep for a random duration using human-like randomization
+ */
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 export class TrafficController {
     crossingKey = null;
     queue = [];
     compiledProfile;
+    // Macros with supremacy bypass traffic control entirely
+    supremacyMacros = new Set();
     constructor(compiledProfile) {
         this.compiledProfile = compiledProfile;
     }
-    async requestCrossing(key) {
+    /**
+     * Grant supremacy to a macro - it will bypass traffic control entirely
+     */
+    grantSupremacy(macroName) {
+        this.supremacyMacros.add(macroName);
+    }
+    /**
+     * Revoke supremacy from a macro
+     */
+    revokeSupremacy(macroName) {
+        this.supremacyMacros.delete(macroName);
+    }
+    /**
+     * Check if a macro has supremacy
+     */
+    hasSupremacy(macroName) {
+        return this.supremacyMacros.has(macroName);
+    }
+    /**
+     * Get all macros with supremacy
+     */
+    getSupremacyList() {
+        return [...this.supremacyMacros];
+    }
+    async requestCrossing(key, macroName) {
+        // Supremacy macros bypass traffic control
+        if (macroName && this.supremacyMacros.has(macroName)) {
+            return;
+        }
         const raw = extractRawKey(key);
         const isConundrum = this.compiledProfile.conundrumKeys.has(raw);
         if (!isConundrum) {
@@ -14,7 +51,9 @@ export class TrafficController {
         }
         this.queue.push({ key: raw, timestamp: Date.now() });
         while (this.shouldWait(raw)) {
-            await sleep(randomRange(29, 36));
+            // Use human-like random wait time instead of fixed range
+            const waitMs = getHumanTrafficWait();
+            await sleep(waitMs);
         }
         this.crossingKey = raw;
     }
@@ -34,3 +73,4 @@ export class TrafficController {
     }
 }
 export default TrafficController;
+//# sourceMappingURL=trafficController.js.map
