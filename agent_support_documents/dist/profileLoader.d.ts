@@ -10,6 +10,7 @@ export declare class ProfileLoader {
     private profileDir;
     private lastCompiled;
     private keyProfiles;
+    private groupMemberMappings;
     constructor(profileDir?: string);
     /**
      * Validate a macro binding
@@ -33,6 +34,11 @@ export declare class ProfileLoader {
      * Get loaded key profiles for gesture detector
      */
     getKeyProfiles(): Map<string, KeyProfile>;
+    /**
+     * Get group member toggle mappings from profile (if present)
+     * Returns null if profile doesn't define custom mappings
+     */
+    getGroupMemberMappings(): Record<string, [string, string]> | null;
     /**
      * Check if profile has calibration data
      */

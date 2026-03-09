@@ -97,6 +97,14 @@ export class ExecutorFactory {
                     return new InterceptionExecutorWrapper(mock, fullConfig.onEvent);
                 }
                 return new InterceptionExecutorWrapper(interception, fullConfig.onEvent);
+            case "teensy":
+                logger.debug("Creating Teensy executor (USB HID via serial)");
+                logger.debug("Detection level: LOW (appears as real USB keyboard)");
+                logger.debug("Stutter workarounds: DISABLED (no queue contention)");
+                // TeensySequenceExecutor is created in index.ts where we have async access
+                // to the TeensyExecutor singleton. The factory returns a SequenceExecutor
+                // configured with backendMode='teensy' which disables workarounds.
+                return new SequenceExecutor(fullConfig.onEvent, undefined, "teensy");
             case "mock":
                 logger.debug("Creating Mock executor (no keypresses)");
                 logger.debug("Use this for testing profile logic");
@@ -123,6 +131,18 @@ export class ExecutorFactory {
                 });
                 return { executor, backend: "interception" };
             }
+        }
+        // Try Teensy if available
+        try {
+            const { isTeensyAvailable } = await import("./teensyExecutor.js");
+            if (await isTeensyAvailable()) {
+                logger.debug("Teensy 4.0 detected on USB");
+                const executor = await this.create({ backend: "teensy", onEvent });
+                return { executor, backend: "teensy" };
+            }
+        }
+        catch (error) {
+            // Teensy not available, continue
         }
         // Fall back to RobotJS
         try {
@@ -160,13 +180,32 @@ export class ExecutorFactory {
                 notes: "Windows only",
             });
         }
+        // Check Teensy
+        try {
+            const { isTeensyAvailable } = await import("./teensyExecutor.js");
+            const teensyAvailable = await isTeensyAvailable();
+            backends.push({
+                backend: "teensy",
+                available: teensyAvailable,
+                notes: teensyAvailable
+                    ? "USB HID via Teensy 4.0 (no stutter, hardware keyboard)"
+                    : "Teensy 4.0 not detected on USB",
+            });
+        }
+        catch {
+            backends.push({
+                backend: "teensy",
+                available: false,
+                notes: "Install serialport: npm install serialport",
+            });
+        }
         // Check RobotJS
         try {
             await import("robotjs");
             backends.push({
                 backend: "robotjs",
                 available: true,
-                notes: "SendInput API (medium detection risk)",
+                notes: "SendInput API (medium detection risk, has stutter workarounds)",
             });
         }
         catch {

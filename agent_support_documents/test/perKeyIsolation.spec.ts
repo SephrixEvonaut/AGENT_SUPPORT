@@ -75,7 +75,7 @@ describe("Per-Key State Machine Isolation", () => {
     detector.reset();
   });
 
-  it("creates independent state machine for each of 23 input keys", () => {
+  it("creates independent state machine for each input key", () => {
     // Code evidence from gestureDetector.ts lines 285-301:
     // for (const key of INPUT_KEYS) {
     //   this.machines.set(key, new KeyGestureStateMachine(key, settings, (ev) => { ... }));
@@ -84,9 +84,11 @@ describe("Per-Key State Machine Isolation", () => {
     // Each key gets its own KeyGestureStateMachine instance
     // Machines stored in Map<InputKey, KeyGestureStateMachine>
 
-    expect(INPUT_KEYS.length).toBe(28);
+    expect(INPUT_KEYS.length).toBe(33);
 
-    // All 28 keys should be recognized (including E, F, G, NUMPAD8 for Omega D-key triggers)
+    // All 33 keys should be recognized (including E, F, G for Omega D-key triggers,
+    // 7 for F2 toggle activation, SPACEBAR, Q, 8 for Omega overhaul,
+    // F10, F11, F12, INSERT for group member config mode)
     const expectedKeys = [
       "W",
       "A",
@@ -106,6 +108,10 @@ describe("Per-Key State Machine Isolation", () => {
       "G",
       // Function key
       "F2",
+      // Spacebar
+      "SPACEBAR",
+      // Q key (toggle activator for Q toggle system)
+      "Q",
       "1",
       "2",
       "3",
@@ -114,11 +120,15 @@ describe("Per-Key State Machine Isolation", () => {
       "6",
       "7",
       "8",
-      "9",
       "=",
       "MIDDLE_CLICK",
-      // Numpad for D-key triggers
-      "NUMPAD8",
+      // Semicolon for forward movement (D-key trigger in Omega)
+      ";",
+      // Group member SWTOR keys (for config mode)
+      "F10",
+      "F11",
+      "F12",
+      "INSERT",
     ];
     expect(INPUT_KEYS).toEqual(expectedKeys);
   });

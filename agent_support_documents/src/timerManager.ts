@@ -54,7 +54,9 @@ export class TimerManager {
   startTimer(id: string, duration: number, message: string): void {
     // Validate duration
     if (!duration || duration <= 0) {
-      console.error(`⏱️ ERROR: Invalid timer duration: ${duration} for '${id}'`);
+      console.error(
+        `⏱️ ERROR: Invalid timer duration: ${duration} for '${id}'`,
+      );
       return;
     }
 
@@ -66,7 +68,9 @@ export class TimerManager {
 
     const startTime = Date.now();
     const durationMs = duration * 1000;
-    console.log(`⏱️ Starting timer '${id}': ${duration}s (${durationMs}ms) → "${message}"`);
+    console.log(
+      `⏱️ Starting timer '${id}': ${duration}s (${durationMs}ms) → "${message}"`,
+    );
 
     // Create timeout for TTS announcement
     const timeoutHandle = setTimeout(() => {

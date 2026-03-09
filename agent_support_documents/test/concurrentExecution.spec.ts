@@ -3,6 +3,7 @@ import { GestureDetector, GestureCallback } from "../src/gestureDetector.js";
 import { SequenceExecutor, ExecutionEvent } from "../src/sequenceExecutor.js";
 import { compileProfile, isConundrumKey } from "../src/profileCompiler.js";
 import { TrafficController } from "../src/trafficController.js";
+import { resetQueuePressureMonitor } from "../src/queuePressureMonitor.js";
 import {
   GestureSettings,
   GestureEvent,
@@ -120,7 +121,7 @@ async function simulateMultiTap(
   key: string,
   count: number,
   tapDurationMs: number = 15,
-  gapMs: number = 25
+  gapMs: number = 25,
 ): Promise<void> {
   for (let i = 0; i < count; i++) {
     detector.handleKeyDown(key);
@@ -244,7 +245,8 @@ describe("SequenceExecutor - Concurrent Execution", () => {
   });
 
   afterEach(() => {
-    executor.shutdown();
+    executor.destroy();
+    resetQueuePressureMonitor();
   });
 
   it("executeDetached() fires and forgets (non-blocking)", async () => {
@@ -313,21 +315,21 @@ describe("SequenceExecutor - Concurrent Execution", () => {
     expect(executor.getActiveBindings()).toContain("Concurrent_A");
     expect(executor.getActiveBindings()).toContain("Concurrent_B");
 
-    // Wait for completion
-    await sleep(300);
+    // Wait for completion (output pacing adds up to 100ms per step position)
+    await sleep(1200);
 
     // Both should have completed
     const startedA = events.find(
-      (e) => e.type === "started" && e.bindingName === "Concurrent_A"
+      (e) => e.type === "started" && e.bindingName === "Concurrent_A",
     );
     const startedB = events.find(
-      (e) => e.type === "started" && e.bindingName === "Concurrent_B"
+      (e) => e.type === "started" && e.bindingName === "Concurrent_B",
     );
     const completedA = events.find(
-      (e) => e.type === "completed" && e.bindingName === "Concurrent_A"
+      (e) => e.type === "completed" && e.bindingName === "Concurrent_A",
     );
     const completedB = events.find(
-      (e) => e.type === "completed" && e.bindingName === "Concurrent_B"
+      (e) => e.type === "completed" && e.bindingName === "Concurrent_B",
     );
 
     expect(startedA).toBeDefined();
@@ -367,8 +369,8 @@ describe("SequenceExecutor - Concurrent Execution", () => {
     // Should still only be 1 active
     expect(executor.getActiveExecutionCount()).toBe(1);
 
-    // Wait for completion
-    await sleep(400);
+    // Wait for completion (output pacing adds overhead to each step)
+    await sleep(1200);
 
     // Should have exactly 1 started and 1 completed
     const started = events.filter((e) => e.type === "started");
@@ -439,17 +441,17 @@ describe("SequenceExecutor - Concurrent Execution", () => {
       "Seq_4",
     ]);
 
-    // Wait for completion
-    await sleep(400);
+    // Wait for completion (8 total steps through shared pacing counter + delays)
+    await sleep(1500);
 
     // All should complete
     expect(executor.getActiveExecutionCount()).toBe(0);
 
     const allStarted = bindings.every((b) =>
-      events.some((e) => e.type === "started" && e.bindingName === b.name)
+      events.some((e) => e.type === "started" && e.bindingName === b.name),
     );
     const allCompleted = bindings.every((b) =>
-      events.some((e) => e.type === "completed" && e.bindingName === b.name)
+      events.some((e) => e.type === "completed" && e.bindingName === b.name),
     );
 
     expect(allStarted).toBe(true);
@@ -478,7 +480,8 @@ describe("Gesture Detector + Executor Integration", () => {
 
   afterEach(() => {
     detector.reset();
-    executor.shutdown();
+    executor.destroy();
+    resetQueuePressureMonitor();
   });
 
   it("simultaneous gestures on different keys trigger concurrent execution", async () => {
@@ -510,7 +513,8 @@ describe("Gesture Detector + Executor Integration", () => {
     // Wire gesture detection to executor
     const handleGesture = (ev: GestureEvent) => {
       const binding = macros.find(
-        (m) => m.trigger.key === ev.inputKey && m.trigger.gesture === ev.gesture
+        (m) =>
+          m.trigger.key === ev.inputKey && m.trigger.gesture === ev.gesture,
       );
       if (binding) {
         executor.executeDetached(binding);
@@ -558,7 +562,8 @@ describe("Gesture Detector + Executor Integration", () => {
 
     // Wait for gesture windows to close and executions to complete
     // Need extra time for all 3 gestures to emit via queueMicrotask + checkInterval
-    await sleep(400);
+    // Plus output pacing adds delay per step position
+    await sleep(1200);
 
     // Should have 3 concurrent executions
     const started = executionEvents.filter((e) => e.type === "started");
@@ -621,7 +626,8 @@ describe("Gesture Detector + Executor Integration", () => {
     // Wire gesture detection to executor
     const handleGesture = (ev: GestureEvent) => {
       const binding = simplifiedMacros.find(
-        (m) => m.trigger.key === ev.inputKey && m.trigger.gesture === ev.gesture
+        (m) =>
+          m.trigger.key === ev.inputKey && m.trigger.gesture === ev.gesture,
       );
       if (binding) {
         executor.executeDetached(binding);
@@ -676,8 +682,8 @@ describe("Gesture Detector + Executor Integration", () => {
       "InputW_Double",
     ]);
 
-    // Wait for all to complete
-    await sleep(400);
+    // Wait for all to complete (output pacing adds significant overhead for 8 total steps)
+    await sleep(1500);
 
     const completed = executionEvents.filter((e) => e.type === "completed");
     expect(completed.length).toBe(4);

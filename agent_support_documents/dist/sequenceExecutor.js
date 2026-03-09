@@ -26,7 +26,8 @@ import { TrafficController } from "./trafficController.js";
 import { TimerManager } from "./timerManager.js";
 import { getDiscordController } from "./discordController.js";
 import { logger } from "./logger.js";
-import { getHumanBufferDelay, getHumanKeyDownDuration, getHumanEchoHitDuration, getHumanReleaseDelay, getHumanDualKeyOffset, getHumanDelay, calculateBufferExtension, } from "./humanRandomizer.js";
+import { getQueuePressureMonitor } from "./queuePressureMonitor.js";
+import { getHumanBufferDelay, getHumanKeyDownDuration, getHumanReleaseDelay, getHumanDualKeyOffset, getHumanDelay, } from "./humanRandomizer.js";
 export class SequenceExecutor {
     // Per-binding execution state - allows DIFFERENT bindings to run concurrently
     // but prevents the SAME binding from overlapping with itself
@@ -39,21 +40,64 @@ export class SequenceExecutor {
     compiledProfile = null;
     trafficController = null;
     timerManager;
+    // Callback to suppress synthetic keypresses from being detected
+    suppressKeyCallback = null;
     // Abort controllers for cancellable sleeps
     sleepAbortController = null;
     // Track held modifiers from holdThroughNext steps
     heldModifier = null;
-    constructor(callback, compiledProfile) {
+    // Track if we need to ensure modifier cleanup before key execution
+    lastModifierCleanup = 0;
+    MODIFIER_CLEANUP_INTERVAL_MS = 50; // Clean modifiers every 50ms max
+    // OUTPUT PACING: Counter for mouse stutter reduction
+    // Every 2nd output: +100ms, Every 3rd output: +120ms, Every 4th output: +190ms
+    // Now applies to ALL outputs including Rs and echo hits
+    // NOTE: In teensy mode, pacing is DISABLED (separate USB device, no queue contention)
+    outputPaceCounter = 0;
+    // REPEAT POLICE: Prevents redundant ability spam from backing up the queue
+    // Tracks last execution time per ability name
+    // If same ability fires within 450ms, delays it 250ms
+    // If 3rd/4th duplicate queues during that wait, they get deleted
+    // NOTE: Disabled entirely in teensy mode (no queue contention)
+    lastAbilityTimes = new Map();
+    repeatPoliceWaiting = new Map();
+    REPEAT_POLICE_WINDOW_MS = 450;
+    REPEAT_POLICE_DELAY_MS = 250;
+    // BACKEND MODE: Determines which workarounds are active
+    // "software" = full RobotJS workarounds, "teensy" = no workarounds
+    backendMode;
+    // Teensy executor reference (set externally when backend is teensy)
+    teensyExecutor = null;
+    constructor(callback, compiledProfile, backendMode = "software") {
         this.callback = callback || (() => { });
+        this.backendMode = backendMode;
         if (compiledProfile)
             this.setCompiledProfile(compiledProfile);
         this.timerManager = new TimerManager();
-        // Configure robotjs for minimal internal delay
-        robot.setKeyboardDelay(1);
-        logger.debug("SequenceExecutor initialized");
+        // Configure robotjs for minimal internal delay (only in software mode)
+        if (this.backendMode === "software") {
+            robot.setKeyboardDelay(1);
+        }
+        logger.debug(`SequenceExecutor initialized (mode: ${backendMode})`);
         logger.debug("Concurrent sequences: ENABLED (different bindings run in parallel)");
         logger.debug("Per-binding overlap: PREVENTED (same binding won't stack)");
         logger.debug("Randomization: HUMAN-LIKE (multi-layer obfuscation)");
+        if (backendMode === "teensy") {
+            logger.debug("Teensy mode: RepeatPolice DISABLED, Pressure Monitor DISABLED, Pacing DISABLED");
+        }
+    }
+    /**
+     * Get the current backend mode
+     */
+    getBackendMode() {
+        return this.backendMode;
+    }
+    /**
+     * Set the Teensy executor reference for teensy mode key output
+     */
+    setTeensyExecutor(executor) {
+        this.teensyExecutor = executor;
+        logger.debug("TeensyExecutor attached to SequenceExecutor");
     }
     /**
      * Provide a compiled profile to enable traffic control.
@@ -61,6 +105,30 @@ export class SequenceExecutor {
     setCompiledProfile(compiled) {
         this.compiledProfile = compiled;
         this.trafficController = new TrafficController(compiled);
+    }
+    /**
+     * Set modifier state callback for smart traffic control.
+     * This allows traffic controller to only wait when conflicting modifier is held.
+     */
+    setModifierStateCallback(cb) {
+        if (this.trafficController) {
+            this.trafficController.setModifierStateCallback(cb);
+        }
+    }
+    /**
+     * Set callback to suppress keys in the gesture detector during output.
+     * This prevents synthetic keypresses from triggering gestures.
+     */
+    setSuppressKeyCallback(cb) {
+        this.suppressKeyCallback = cb;
+    }
+    /**
+     * Suppress a key for a duration (prevents gesture detection of synthetic keypresses)
+     */
+    suppressKey(key, durationMs = 150) {
+        if (this.suppressKeyCallback) {
+            this.suppressKeyCallback(key, durationMs);
+        }
     }
     /**
      * Validate a sequence step meets timing constraints
@@ -82,7 +150,13 @@ export class SequenceExecutor {
             }
             return null;
         }
-        // Steps without a key (and not timer/scroll) are invalid
+        // Allow delay-only steps (minDelay/maxDelay without key)
+        if (!step.key &&
+            (step.minDelay !== undefined || step.maxDelay !== undefined)) {
+            // This is a pure delay step - valid
+            return null;
+        }
+        // Steps without a key (and not timer/scroll/delay) are invalid
         if (!step.key) {
             return `Step ${stepIndex}: must have key, timer, or scrollDirection`;
         }
@@ -158,6 +232,21 @@ export class SequenceExecutor {
         numpad_subtract: "numpad_-",
         numpad_multiply: "numpad_*",
         numpad_decimal: "numpad_.",
+        // Punctuation keys
+        grave: "`",
+        backslash: "\\",
+        slash: "/",
+        minus: "-",
+        lbracket: "[",
+        rbracket: "]",
+        comma: ",",
+        apostrophe: "'",
+        // Navigation/editing keys
+        pageup: "pageup",
+        pagedown: "pagedown",
+        delete: "delete",
+        backspace: "backspace",
+        tab: "tab",
         // Escape key
         escape: "escape",
         esc: "escape",
@@ -197,16 +286,43 @@ export class SequenceExecutor {
         return { key: base, modifiers };
     }
     /**
+     * Ensure clean modifier state before sending modified keys
+     * This prevents conflicts when physical keys (like movement) are held
+     * while we try to send synthetic ALT/SHIFT + key combinations
+     */
+    ensureCleanModifierState(modifiers) {
+        if (modifiers.length === 0)
+            return;
+        const now = Date.now();
+        if (now - this.lastModifierCleanup < this.MODIFIER_CLEANUP_INTERVAL_MS) {
+            return; // Don't spam cleanup
+        }
+        // Release all modifiers first to ensure clean state
+        // This fixes issues where physical numpad movement keys conflict
+        // with synthetic ALT+NUMPAD combinations
+        try {
+            for (const mod of modifiers) {
+                this._keyToggle(mod, "up");
+            }
+        }
+        catch {
+            // Ignore errors - modifier might not have been down
+        }
+        this.lastModifierCleanup = now;
+    }
+    /**
      * Buffer tier ranges (inclusive) - base ranges for human randomizer
      * Actual values selected using sophisticated multi-layer randomization
+     * Updated: Larger gaps to reduce mouse lag from blocking robotjs calls
      */
     bufferRanges = {
-        low: [129, 163],
-        medium: [229, 263],
+        low: [229, 263],
+        medium: [337, 423],
         high: [513, 667],
     };
     /**
-     * Sleep for specified milliseconds (cancellable - aborts immediately on shutdown)
+     * Sleep for specified milliseconds (cancellable - aborts on shutdown)
+     * Optimized: No polling interval - checks shutdown before and after sleep
      */
     sleep(ms) {
         return new Promise((resolve) => {
@@ -214,17 +330,9 @@ export class SequenceExecutor {
                 resolve();
                 return;
             }
-            const timeoutId = setTimeout(resolve, ms);
-            // Store timeout for potential cancellation
-            const checkShutdown = setInterval(() => {
-                if (this.isShutdown) {
-                    clearTimeout(timeoutId);
-                    clearInterval(checkShutdown);
-                    resolve();
-                }
-            }, 5); // Check every 5ms for shutdown
-            // Also clear interval when timeout completes normally
-            setTimeout(() => clearInterval(checkShutdown), ms + 10);
+            setTimeout(() => {
+                resolve();
+            }, ms);
         });
     }
     /**
@@ -234,7 +342,62 @@ export class SequenceExecutor {
         // Keep for backward compatibility but prefer explicit key+modifier flow
         const { key: parsedKey, modifiers } = this.parseKey(key);
         // Must pass [] not undefined - Windows RobotJS bug with undefined modifiers
-        robot.keyTap(parsedKey, modifiers);
+        this._keyTap(parsedKey, modifiers);
+    }
+    // ========================================================================
+    // KEY OUTPUT ROUTING: Sends to either RobotJS or Teensy based on backend
+    // ========================================================================
+    /**
+     * Route keyToggle to the active backend.
+     * In teensy mode, "down" sends a minimal press (Teensy handles hold+release atomically).
+     * "up" is a no-op for Teensy since it auto-releases after the duration.
+     */
+    _keyToggle(key, direction, modifiers) {
+        if (this.backendMode === "teensy" && this.teensyExecutor) {
+            if (direction === "down") {
+                // Teensy: fire-and-forget a minimal press (10ms)
+                // The actual hold duration is handled by _keyPressForDuration
+                this.teensyExecutor.pressKey(key, 10, modifiers || []).catch((err) => {
+                    logger.error(`[Teensy] keyToggle error: ${err.message}`);
+                });
+            }
+            // "up" is a no-op - Teensy auto-releases after duration
+        }
+        else {
+            robot.keyToggle(key, direction, modifiers);
+        }
+    }
+    /**
+     * Route keyTap to the active backend.
+     */
+    _keyTap(key, modifiers) {
+        if (this.backendMode === "teensy" && this.teensyExecutor) {
+            this.teensyExecutor.pressKey(key, 50, modifiers || []).catch((err) => {
+                logger.error(`[Teensy] keyTap error: ${err.message}`);
+            });
+        }
+        else {
+            robot.keyTap(key, modifiers);
+        }
+    }
+    /**
+     * Press a key for a specific duration - the optimized Teensy path.
+     * For Teensy: sends a single serial command with built-in hold duration.
+     * For RobotJS: does keyToggle down → sleep → keyToggle up.
+     */
+    async _keyPressForDuration(key, durationMs, modifiers) {
+        if (this.backendMode === "teensy" && this.teensyExecutor) {
+            // Teensy: single command handles the entire press-hold-release cycle
+            await this.teensyExecutor.pressKey(key, durationMs, modifiers);
+        }
+        else {
+            // RobotJS: manual down → sleep → up
+            robot.keyToggle(key, "down", modifiers);
+            await this.sleep(durationMs);
+            if (!this.isShutdown) {
+                robot.keyToggle(key, "up", modifiers);
+            }
+        }
     }
     /**
      * Check if a binding is currently executing
@@ -299,6 +462,21 @@ export class SequenceExecutor {
         return this.trafficController?.getSupremacyList() || [];
     }
     /**
+     * Check if Stun Break is blocked by cooldown
+     * @returns null if available, BlockerInfo if on cooldown
+     */
+    isStunBreakBlocked() {
+        return this.trafficController?.isStunBreakBlocked() || null;
+    }
+    /**
+     * Record Stun Break usage and start cooldown timer
+     */
+    recordStunBreakUsed() {
+        if (this.trafficController) {
+            this.trafficController.recordStunBreakUsed();
+        }
+    }
+    /**
      * Destroy the executor - stops all operations and prevents new ones
      */
     destroy() {
@@ -310,7 +488,7 @@ export class SequenceExecutor {
         // Release any held keys immediately
         if (this.heldModifier) {
             try {
-                robot.keyToggle(this.heldModifier.key, "up", this.heldModifier.modifiers);
+                this._keyToggle(this.heldModifier.key, "up", this.heldModifier.modifiers);
             }
             catch (e) {
                 /* ignore */
@@ -356,11 +534,50 @@ export class SequenceExecutor {
      */
     async executeInternal(binding) {
         const { name, sequence } = binding;
+        // ================================================================
+        // STUN BREAK COOLDOWN CHECK
+        // ================================================================
+        if (name === "Stun Break") {
+            const blocker = this.isStunBreakBlocked();
+            if (blocker) {
+                logger.warn(`⏱️  Stun Break blocked: ${blocker.reason} (${Math.ceil(blocker.cooldownMs / 1000)}s remaining)`);
+                return false;
+            }
+        }
         // Check if already executing (per-binding lock)
         if (this.isExecuting.get(name)) {
             logger.warn(`"${name}" already executing, skipping...`);
             return false;
         }
+        // ================================================================
+        // REPEAT POLICE: Prevent redundant ability spam
+        // Only active in SOFTWARE mode (RobotJS queue contention)
+        // DISABLED in teensy mode (no queue contention)
+        // ================================================================
+        // Skip for echo hits (handled separately) and R streams
+        const isEchoOrR = name.includes("echo") || name === "R" || name.includes("_R_");
+        if (!isEchoOrR && this.backendMode === "software") {
+            const now = Date.now();
+            const lastTime = this.lastAbilityTimes.get(name);
+            // Check if this ability was fired within REPEAT_POLICE_WINDOW_MS
+            if (lastTime && now - lastTime < this.REPEAT_POLICE_WINDOW_MS) {
+                // Check if we're already waiting on this ability (3rd/4th duplicate)
+                if (this.repeatPoliceWaiting.get(name)) {
+                    // Delete this execution - it's a 3rd/4th duplicate during wait
+                    logger.debug(`🚔 RepeatPolice: Deleted redundant "${name}" (already waiting)`);
+                    return false;
+                }
+                // This is the 2nd duplicate - mark as waiting and delay
+                this.repeatPoliceWaiting.set(name, true);
+                logger.debug(`🚔 RepeatPolice: Delaying "${name}" by ${this.REPEAT_POLICE_DELAY_MS}ms (duplicate within ${this.REPEAT_POLICE_WINDOW_MS}ms)`);
+                await this.sleep(this.REPEAT_POLICE_DELAY_MS);
+                // Clear waiting state
+                this.repeatPoliceWaiting.set(name, false);
+            }
+            // Update last execution time
+            this.lastAbilityTimes.set(name, Date.now());
+        }
+        // ================================================================
         // Validate sequence
         const validationError = this.validateSequence(sequence);
         if (validationError) {
@@ -422,14 +639,42 @@ export class SequenceExecutor {
                     continue; // Skip keypress logic
                 }
                 // ================================================================
+                // DELAY-ONLY STEP HANDLING
+                // ================================================================
+                if (!step.key &&
+                    !step.scrollDirection &&
+                    (step.minDelay !== undefined || step.maxDelay !== undefined)) {
+                    // This is a pure delay step - just wait
+                    const delay = getHumanDelay(step.minDelay || 100, step.maxDelay || 150, "delay_step");
+                    logger.debug(`Delay step: ${delay}ms`);
+                    if (delay > 0)
+                        await this.sleep(delay);
+                    // Emit step event for monitoring
+                    this.callback({
+                        type: "step",
+                        bindingName: name,
+                        step,
+                        stepIndex: i,
+                        timestamp: Date.now(),
+                    });
+                    continue; // Skip keypress logic
+                }
+                // ================================================================
                 // SCROLL HANDLING
                 // ================================================================
                 if (step.scrollDirection) {
                     const magnitude = step.scrollMagnitude ?? 3;
                     // robotjs scrollMouse: positive y = scroll up, negative y = scroll down
-                    const scrollY = step.scrollDirection === "down" ? -magnitude : magnitude;
-                    logger.debug(`Scroll ${step.scrollDirection}: ${magnitude} units`);
-                    robot.scrollMouse(0, scrollY);
+                    const scrollDelta = step.scrollDirection === "down" ? -1 : 1;
+                    console.log(`🖱️ Scroll ${step.scrollDirection}: ${magnitude} ticks`);
+                    // Send scroll events one at a time with small delays for reliability
+                    for (let tick = 0; tick < magnitude; tick++) {
+                        robot.scrollMouse(0, scrollDelta);
+                        // Small delay between ticks for game to register
+                        if (tick < magnitude - 1) {
+                            await this.sleep(15);
+                        }
+                    }
                     // Emit step event for monitoring
                     this.callback({
                         type: "step",
@@ -551,10 +796,49 @@ export class SequenceExecutor {
                     this.timerManager.startTimer("drop", 16, "drop");
                 }
                 // Traffic control for conundrum keys: wait if necessary
-                if (this.compiledProfile && this.trafficController) {
+                // BYPASS for F8, R, TAB: These keys have all modifier variants bound in-game
+                // so they will fire correctly even with modifier contamination
+                const trafficBypassKeys = new Set(["F8", "R", "TAB"]);
+                const rawKeyForTraffic = step
+                    .key.split("+")
+                    .pop()
+                    .trim()
+                    .toUpperCase();
+                const bypassTraffic = trafficBypassKeys.has(rawKeyForTraffic);
+                if (this.compiledProfile && this.trafficController && !bypassTraffic) {
                     const needsTraffic = isConundrumKey(step.key, this.compiledProfile);
                     if (needsTraffic) {
                         await this.trafficController.requestCrossing(step.key, name);
+                    }
+                }
+                // OUTPUT PACING: Add delays to reduce mouse stutter from blocking robotjs calls
+                // Only needed in software mode - Teensy is a separate USB device with no queue contention
+                if (this.backendMode === "software") {
+                    this.outputPaceCounter++;
+                    const pacePosition = ((this.outputPaceCounter - 1) % 4) + 1; // 1, 2, 3, 4, 1, 2, 3, 4...
+                    // Software mode: aggressive pacing to reduce stutter
+                    if (pacePosition === 2) {
+                        await this.sleep(100);
+                    }
+                    else if (pacePosition === 3) {
+                        await this.sleep(120);
+                    }
+                    else if (pacePosition === 4) {
+                        await this.sleep(190);
+                    }
+                }
+                // QUEUE PRESSURE: Check for adaptive delay based on pressure buildup
+                // Only active in software mode
+                if (this.backendMode === "software") {
+                    const pressureMonitor = getQueuePressureMonitor();
+                    const adaptiveDelay = pressureMonitor.getAdaptiveDelay();
+                    if (adaptiveDelay > 0) {
+                        await this.sleep(adaptiveDelay);
+                    }
+                    // Check if this specific ability should be throttled (frequent spike contributor)
+                    const abilityThrottle = pressureMonitor.shouldThrottleAbility(name);
+                    if (abilityThrottle > 0) {
+                        await this.sleep(abilityThrottle);
                     }
                 }
                 // Determine key down duration using human-like randomization
@@ -571,10 +855,20 @@ export class SequenceExecutor {
                     const dualKd = step.dualKeyDownDuration || kd;
                     dualKeyDownMs = getHumanKeyDownDuration(dualKd[0], dualKd[1]);
                 }
+                // Ensure clean modifier state before sending keys with modifiers
+                // This prevents conflicts when movement keys (NUMPAD8, E, F, G) are held
+                if (modifiers.length > 0) {
+                    this.ensureCleanModifierState(modifiers);
+                }
+                // Suppress the raw key to prevent gesture detection of synthetic keypress
+                // This prevents ALT+A from triggering the A gesture (Leap) when outputting Ravage
+                // Key 7 uses longer suppression (350ms) to ensure reliable isolation
+                const suppressDuration = parsedKey === "7" ? 350 : 200;
+                this.suppressKey(parsedKey.toUpperCase(), suppressDuration);
                 // PRIMARY KEY DOWN
                 try {
                     // Must pass modifiers array (even if empty) - Windows RobotJS bug with undefined
-                    robot.keyToggle(parsedKey, "down", modifiers);
+                    this._keyToggle(parsedKey, "down", modifiers);
                 }
                 catch (err) {
                     // Fallback to keyTap if keyToggle unsupported for this key
@@ -583,7 +877,7 @@ export class SequenceExecutor {
                 // Emergency key release on shutdown
                 if (this.isShutdown) {
                     try {
-                        robot.keyToggle(parsedKey, "up", modifiers);
+                        this._keyToggle(parsedKey, "up", modifiers);
                     }
                     catch (e) {
                         /* ignore */
@@ -607,7 +901,7 @@ export class SequenceExecutor {
                     // Emergency release primary on shutdown
                     if (this.isShutdown) {
                         try {
-                            robot.keyToggle(parsedKey, "up", modifiers);
+                            this._keyToggle(parsedKey, "up", modifiers);
                         }
                         catch (e) {
                             /* ignore */
@@ -616,7 +910,7 @@ export class SequenceExecutor {
                     }
                     // DUAL KEY DOWN
                     try {
-                        robot.keyToggle(dualParsedKey.key, "down", dualParsedKey.modifiers.length === 0
+                        this._keyToggle(dualParsedKey.key, "down", dualParsedKey.modifiers.length === 0
                             ? undefined
                             : dualParsedKey.modifiers);
                     }
@@ -627,13 +921,13 @@ export class SequenceExecutor {
                     // Emergency release both on shutdown
                     if (this.isShutdown) {
                         try {
-                            robot.keyToggle(parsedKey, "up", modifiers);
+                            this._keyToggle(parsedKey, "up", modifiers);
                         }
                         catch (e) {
                             /* ignore */
                         }
                         try {
-                            robot.keyToggle(dualParsedKey.key, "up", dualParsedKey.modifiers.length === 0
+                            this._keyToggle(dualParsedKey.key, "up", dualParsedKey.modifiers.length === 0
                                 ? undefined
                                 : dualParsedKey.modifiers);
                         }
@@ -648,13 +942,13 @@ export class SequenceExecutor {
                     // Emergency release both on shutdown
                     if (this.isShutdown) {
                         try {
-                            robot.keyToggle(parsedKey, "up", modifiers);
+                            this._keyToggle(parsedKey, "up", modifiers);
                         }
                         catch (e) {
                             /* ignore */
                         }
                         try {
-                            robot.keyToggle(dualParsedKey.key, "up", dualParsedKey.modifiers.length === 0
+                            this._keyToggle(dualParsedKey.key, "up", dualParsedKey.modifiers.length === 0
                                 ? undefined
                                 : dualParsedKey.modifiers);
                         }
@@ -666,7 +960,7 @@ export class SequenceExecutor {
                     // PRIMARY KEY UP (releases first)
                     try {
                         // Must pass modifiers array (even if empty) - Windows RobotJS bug with undefined
-                        robot.keyToggle(parsedKey, "up", modifiers);
+                        this._keyToggle(parsedKey, "up", modifiers);
                     }
                     catch (err) {
                         // If keyToggle failed, nothing else to do
@@ -678,7 +972,7 @@ export class SequenceExecutor {
                         // Emergency release dual on shutdown
                         if (this.isShutdown) {
                             try {
-                                robot.keyToggle(dualParsedKey.key, "up", dualParsedKey.modifiers.length === 0
+                                this._keyToggle(dualParsedKey.key, "up", dualParsedKey.modifiers.length === 0
                                     ? undefined
                                     : dualParsedKey.modifiers);
                             }
@@ -690,7 +984,7 @@ export class SequenceExecutor {
                     }
                     // DUAL KEY UP (releases second)
                     try {
-                        robot.keyToggle(dualParsedKey.key, "up", dualParsedKey.modifiers.length === 0
+                        this._keyToggle(dualParsedKey.key, "up", dualParsedKey.modifiers.length === 0
                             ? undefined
                             : dualParsedKey.modifiers);
                     }
@@ -706,7 +1000,7 @@ export class SequenceExecutor {
                     // Emergency release on shutdown
                     if (this.isShutdown) {
                         try {
-                            robot.keyToggle(parsedKey, "up", modifiers);
+                            this._keyToggle(parsedKey, "up", modifiers);
                         }
                         catch (e) {
                             /* ignore */
@@ -729,19 +1023,34 @@ export class SequenceExecutor {
                         // PRIMARY KEY UP (normal release)
                         try {
                             // Must pass modifiers array (even if empty) - Windows RobotJS bug with undefined
-                            robot.keyToggle(parsedKey, "up", modifiers);
+                            this._keyToggle(parsedKey, "up", modifiers);
                         }
                         catch (err) {
                             // If keyToggle failed, nothing else to do
                         }
                     }
                 }
-                // Release traffic control if it was acquired
-                if (this.compiledProfile && this.trafficController) {
+                // Release traffic control if it was acquired (matching bypass logic from above)
+                const rawKeyForRelease = step
+                    .key.split("+")
+                    .pop()
+                    .trim()
+                    .toUpperCase();
+                const bypassTrafficRelease = trafficBypassKeys.has(rawKeyForRelease);
+                if (this.compiledProfile &&
+                    this.trafficController &&
+                    !bypassTrafficRelease) {
                     const needsTraffic = isConundrumKey(step.key, this.compiledProfile);
                     if (needsTraffic) {
                         this.trafficController.releaseCrossing(step.key);
                     }
+                }
+                // QUEUE PRESSURE: Record this output event for analysis
+                // Only active in software mode
+                if (this.backendMode === "software") {
+                    const isEchoHit = step.echoHits !== undefined && step.echoHits.count > 0;
+                    const pressureMonitor = getQueuePressureMonitor();
+                    pressureMonitor.recordOutput(name, step.key, keyDownMs + (hasDualKey ? dualKeyDownMs : 0), isEchoHit, false);
                 }
                 // Determine buffer delay after this key press
                 const isLastStep = i === sequence.length - 1;
@@ -768,57 +1077,42 @@ export class SequenceExecutor {
                         delay,
                         timestamp: Date.now(),
                     });
-                    console.log(`     ⏱️  Waiting ${delay}ms...`);
-                    // ECHO HITS: Rapid repeat keypresses during buffer phase
-                    // WITH: Buffer-tier-aware timing and intelligent buffer extension
-                    if (step.echoHits &&
-                        step.echoHits.count > 0 &&
-                        step.echoHits.windowMs > 0) {
+                    // ECHO HITS: Rapid repeat keypresses after initial output
+                    // Each echo comes 90-120ms after the last one (human randomized)
+                    // All echo keyDownDurations are 37-42ms
+                    if (step.echoHits && step.echoHits.count > 0) {
                         const echoCount = step.echoHits.count;
-                        const echoWindowMs = step.echoHits.windowMs;
-                        // Determine buffer tier for echo timing (default to "low" if not specified)
-                        const echoBufferTier = step.bufferTier || "low";
-                        // Calculate if buffer extension is needed
-                        const extensionResult = calculateBufferExtension(echoCount, echoBufferTier, delay);
-                        // Apply buffer extension if needed
-                        let effectiveDelay = delay;
-                        if (extensionResult.needsExtension) {
-                            effectiveDelay = delay + extensionResult.extensionMs;
-                            logger.debug(`Buffer extension applied: +${extensionResult.extensionMs}ms ` +
-                                `(${extensionResult.reason}). Effective buffer: ${effectiveDelay}ms`);
-                        }
-                        // Calculate echo interval based on echo window
-                        const echoIntervalMs = Math.floor(echoWindowMs / (echoCount + 1));
-                        logger.debug(`Echo hits [${echoBufferTier.toUpperCase()}]: ${echoCount} repeats of "${step.key}" ` +
-                            `within ${echoWindowMs}ms (interval ~${echoIntervalMs}ms, buffer=${effectiveDelay}ms)`);
+                        logger.debug(`Echo hits: ${echoCount} repeats of "${step.key}" (90-120ms gaps, 37-42ms holds)`);
                         for (let e = 0; e < echoCount; e++) {
-                            // Wait for echo interval
-                            await this.sleep(echoIntervalMs);
+                            // Wait 90-120ms before each echo (human randomized)
+                            const echoGap = getHumanDelay(90, 120, "echo_gap");
+                            await this.sleep(echoGap);
                             if (this.isShutdown)
                                 return false;
-                            // Get buffer-tier-aware echo hold duration
-                            const echoHoldMs = getHumanEchoHitDuration(echoBufferTier);
+                            // Echo hold duration: 37-42ms (human randomized)
+                            const echoHoldMs = getHumanDelay(37, 42, "echo_hold");
                             try {
-                                robot.keyToggle(parsedKey, "down", modifiers);
+                                this._keyToggle(parsedKey, "down", modifiers);
                                 await this.sleep(echoHoldMs);
                                 if (this.isShutdown) {
                                     try {
-                                        robot.keyToggle(parsedKey, "up", modifiers);
+                                        this._keyToggle(parsedKey, "up", modifiers);
                                     }
                                     catch (e) { }
                                     return false;
                                 }
-                                robot.keyToggle(parsedKey, "up", modifiers);
+                                this._keyToggle(parsedKey, "up", modifiers);
                             }
                             catch (err) {
                                 // Fallback to keyTap
                                 this.pressKey(step.key);
                             }
-                            logger.debug(`  Echo ${e + 1}/${echoCount}: "${step.key}" held ${echoHoldMs}ms [${echoBufferTier}]`);
+                            logger.debug(`  Echo ${e + 1}/${echoCount}: "${step.key}" gap=${echoGap}ms, hold=${echoHoldMs}ms`);
                         }
                         // Calculate remaining buffer time after echo hits
-                        const echoTimeUsed = echoIntervalMs * echoCount;
-                        const remainingBufferAfterEcho = Math.max(0, effectiveDelay - echoTimeUsed);
+                        // Total echo time = echoCount * ~105ms (avg gap) + echoCount * ~40ms (avg hold)
+                        const estimatedEchoTime = echoCount * 145; // ~145ms per echo
+                        const remainingBufferAfterEcho = Math.max(0, delay - estimatedEchoTime);
                         // Handle held modifier release if applicable
                         if (this.heldModifier && i > 0) {
                             const releaseDelay = getHumanReleaseDelay(this.heldModifier.releaseDelayMin, this.heldModifier.releaseDelayMax);
@@ -826,7 +1120,7 @@ export class SequenceExecutor {
                                 await this.sleep(releaseDelay);
                                 logger.debug(`Releasing held modifier after ${releaseDelay}ms of remaining buffer`);
                                 try {
-                                    robot.keyToggle(this.heldModifier.key, "up", this.heldModifier.modifiers.length === 0
+                                    this._keyToggle(this.heldModifier.key, "up", this.heldModifier.modifiers.length === 0
                                         ? undefined
                                         : this.heldModifier.modifiers);
                                 }
@@ -855,7 +1149,7 @@ export class SequenceExecutor {
                         // Release the held modifier
                         logger.debug(`Releasing held modifier after ${releaseDelay}ms of buffer`);
                         try {
-                            robot.keyToggle(this.heldModifier.key, "up", this.heldModifier.modifiers.length === 0
+                            this._keyToggle(this.heldModifier.key, "up", this.heldModifier.modifiers.length === 0
                                 ? undefined
                                 : this.heldModifier.modifiers);
                         }
@@ -881,7 +1175,7 @@ export class SequenceExecutor {
                     await this.sleep(releaseDelay);
                     logger.debug(`Releasing held modifier after ${releaseDelay}ms (last step)`);
                     try {
-                        robot.keyToggle(this.heldModifier.key, "up", this.heldModifier.modifiers.length === 0
+                        this._keyToggle(this.heldModifier.key, "up", this.heldModifier.modifiers.length === 0
                             ? undefined
                             : this.heldModifier.modifiers);
                     }
@@ -890,6 +1184,11 @@ export class SequenceExecutor {
                     }
                     this.heldModifier = null;
                 }
+            }
+            // Record Stun Break cooldown if this was Stun Break
+            if (name === "Stun Break") {
+                this.recordStunBreakUsed();
+                logger.debug(`⏱️  Stun Break cooldown started (120s)`);
             }
             this.callback({
                 type: "completed",
@@ -915,7 +1214,7 @@ export class SequenceExecutor {
             if (this.heldModifier) {
                 logger.debug("Cleaning up held modifier due to sequence end/error");
                 try {
-                    robot.keyToggle(this.heldModifier.key, "up", this.heldModifier.modifiers.length === 0
+                    this._keyToggle(this.heldModifier.key, "up", this.heldModifier.modifiers.length === 0
                         ? undefined
                         : this.heldModifier.modifiers);
                 }

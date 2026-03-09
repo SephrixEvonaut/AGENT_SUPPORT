@@ -37,25 +37,39 @@ export function compileProfilePatched(profile) {
         }
     }
     const conundrumKeys = new Set();
+    const conundrumConflicts = new Map();
     const safeKeys = new Set();
     const allKeys = new Set([...rawSet, ...shiftSet, ...altSet, ...altShiftSet]);
     for (const k of allKeys) {
-        // If a key appears as raw+shift, raw+alt, or shift+alt, it's a conundrum
-        // But if it only appears as alt+shift (and not as raw/shift/alt), it's NOT a conundrum for modifier keys
-        const forms = [
-            rawSet.has(k),
-            shiftSet.has(k),
-            altSet.has(k),
-            altShiftSet.has(k),
-        ].filter(Boolean).length;
-        if ((forms > 1 && !(altShiftSet.has(k) && forms === 2)) || forms > 2) {
+        const inRaw = rawSet.has(k);
+        const inShift = shiftSet.has(k);
+        const inAlt = altSet.has(k);
+        const inAltShift = altShiftSet.has(k);
+        // A raw key is a conundrum if it also appears with modifiers
+        if (inRaw && (inShift || inAlt || inAltShift)) {
             conundrumKeys.add(k);
+            const conflictsWithShift = inShift || inAltShift;
+            const conflictsWithAlt = inAlt || inAltShift;
+            if (conflictsWithShift && conflictsWithAlt) {
+                conundrumConflicts.set(k, "both");
+            }
+            else if (conflictsWithShift) {
+                conundrumConflicts.set(k, "shift");
+            }
+            else if (conflictsWithAlt) {
+                conundrumConflicts.set(k, "alt");
+            }
         }
-        else if (forms === 1 && rawSet.has(k)) {
+        else if (inRaw) {
             safeKeys.add(k);
         }
+        // Also check for shift+alt conflicts
+        if (!inRaw && inShift && inAlt) {
+            conundrumKeys.add(k);
+            conundrumConflicts.set(k, "both");
+        }
     }
-    return { conundrumKeys, safeKeys };
+    return { conundrumKeys, conundrumConflicts, safeKeys };
 }
 // Usage: replace compileProfile with compileProfilePatched in your macro agent for this test.
 //# sourceMappingURL=profileCompiler-patch-altshift.js.map

@@ -9,29 +9,40 @@
 // - low:    129-163ms (same-category abilities, rapid fire)
 // - medium: 229-263ms (after targeting, before abilities)
 // - high:   513-667ms (major transitions, cooldowns)
+// - cog:    262-348ms (targeting→cog icon, 75ms faster than standard medium)
 //
 // ICON SEQUENCING RULES:
-// - 🎯 Cog (NUMPAD_SUBTRACT): AFTER targeting abilities
-// - 🛡️ Shield (NUMPAD_MULTIPLY): AFTER guard (dual-key with L)
+// - 🎯 Cog (ALT+F9): AFTER targeting abilities
+// - 🛡️ Shield (\): AFTER guard (dual-key with L)
 // - 🔫 Gun (NUMPAD_ADD): BEFORE focus target
 //
 // ============================================================================
 // ============================================================================
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS (exported for use in omegaProfiles.ts)
 // ============================================================================
-function step(key, bufferTier = "low", opts = {}) {
+export function step(key, bufferTier = "low", opts = {}) {
     return { key, bufferTier, ...opts };
 }
-function targetWithCog(targetKey) {
-    return [step(targetKey, "medium"), step("NUMPAD_SUBTRACT", "low")];
+export function targetWithCog(targetKey) {
+    // Targeting key uses reduced medium buffer (75ms earlier than standard medium)
+    // Custom echo hit with tighter timing (35-46ms) to ensure cog icon targets correctly
+    return [
+        {
+            key: targetKey,
+            minDelay: 262,
+            maxDelay: 348,
+            echoHits: { count: 1, windowMs: 46 },
+        },
+        step("ALT+F9", "low"),
+    ];
 }
-function timerStep(id, durationSeconds, message) {
+export function timerStep(id, durationSeconds, message) {
     return {
         timer: { id, durationSeconds, message },
         bufferTier: "low",
     };
 }
-function holdModifier(key, releaseDelayMin = 7, releaseDelayMax = 18) {
+export function holdModifier(key, releaseDelayMin = 7, releaseDelayMax = 18) {
     return {
         key,
         bufferTier: "medium",
@@ -40,7 +51,7 @@ function holdModifier(key, releaseDelayMin = 7, releaseDelayMax = 18) {
         releaseDelayMax,
     };
 }
-function scrollStep(direction, magnitude) {
+export function scrollStep(direction, magnitude) {
     return {
         scrollDirection: direction,
         scrollMagnitude: magnitude,
@@ -51,6 +62,26 @@ function scrollStep(direction, magnitude) {
 // OMEGA BINDING DEFINITIONS
 // ============================================================================
 export const OMEGA_BINDINGS = [
+    // ==========================================================================
+    // KEY: SPACEBAR
+    // ==========================================================================
+    {
+        name: "Endure Pain Drop Timer",
+        inputKey: "SPACEBAR",
+        gesture: "quick",
+        sequence: [timerStep("drop", 15.5, "drop drop drop drop")],
+        enabled: true,
+    },
+    {
+        name: "Endure Pain Drop Timer (Long)",
+        inputKey: "SPACEBAR",
+        gesture: "long",
+        sequence: [timerStep("drop", 15.5, "drop drop drop drop")],
+        enabled: true,
+    },
+    // SPACEBAR long: covered above
+    // SPACEBAR quick_toggle: none
+    // SPACEBAR long_toggle: none
     // ==========================================================================
     // KEY: 1
     // ==========================================================================
@@ -63,10 +94,10 @@ export const OMEGA_BINDINGS = [
         gcdAbility: "CRUSHING_BLOW",
     },
     {
-        name: "Close Enemy + Cog",
+        name: "Center Target + Cog",
         inputKey: "1",
         gesture: "long",
-        sequence: targetWithCog("Q"),
+        sequence: targetWithCog("SHIFT+O"),
         enabled: true,
     },
     {
@@ -78,10 +109,10 @@ export const OMEGA_BINDINGS = [
         gcdAbility: "CRUSHING_BLOW",
     },
     {
-        name: "Close Enemy + Cog (toggled)",
+        name: "Center Target + Cog (toggled)",
         inputKey: "1",
         gesture: "long_toggle",
-        sequence: targetWithCog("Q"),
+        sequence: targetWithCog("SHIFT+O"),
         enabled: true,
     },
     // ==========================================================================
@@ -119,18 +150,26 @@ export const OMEGA_BINDINGS = [
         gcdAbility: "AEGIS_ASSAULT",
     },
     {
-        name: "Vicious Slash",
+        name: "Smash",
         inputKey: "3",
         gesture: "long",
-        sequence: [step("SHIFT+L", "low")],
+        sequence: [step("]", "low", { echoHits: { count: 3, windowMs: 170 } })],
+        enabled: true,
+        gcdAbility: "SMASH",
+    },
+    {
+        name: "Vicious Slash",
+        inputKey: "3",
+        gesture: "quick_toggle",
+        sequence: [step("ALT+[", "low")],
         enabled: true,
         gcdAbility: "VICIOUS_SLASH",
     },
     {
-        name: "Mad Dash / Awe",
+        name: "Basic Attack",
         inputKey: "3",
-        gesture: "quick_toggle",
-        sequence: [step("ALT+Q", "low")],
+        gesture: "quick_f2",
+        sequence: [step("X", "low", { echoHits: { count: 2, windowMs: 170 } })],
         enabled: true,
     },
     // 3 long_toggle: none
@@ -144,30 +183,21 @@ export const OMEGA_BINDINGS = [
         sequence: [step("K", "low", { echoHits: { count: 2, windowMs: 170 } })],
         enabled: true,
     },
-    {
-        name: "Close Enemy + Cog + Interrupt",
-        inputKey: "4",
-        gesture: "long",
-        sequence: [
-            step("Q", "medium"),
-            step("NUMPAD_SUBTRACT", "low"),
-            step("K", "low"),
-        ],
-        enabled: true,
-    },
+    // 4 long: removed (Close Enemy+Cog+Interrupt removed; use 4+7 combo for Close Enemy+Interrupt)
     {
         name: "Force Choke",
         inputKey: "4",
         gesture: "quick_toggle",
-        sequence: [step("SHIFT+Z", "low")],
+        sequence: [step("DELETE", "low")],
         enabled: true,
         gcdAbility: "FORCE_CHOKE",
     },
+    // 4 long_toggle: removed (Electro Stun Grenade moved to 4 F2)
     {
         name: "Electro Stun Grenade",
         inputKey: "4",
-        gesture: "long_toggle",
-        sequence: [step("ALT+NUMPAD6", "low")],
+        gesture: "quick_f2",
+        sequence: [step("ALT+-", "low")],
         enabled: true,
         gcdAbility: "ELECTRO_STUN",
     },
@@ -182,31 +212,37 @@ export const OMEGA_BINDINGS = [
         enabled: true,
         gcdAbility: "VICIOUS_THROW",
     },
-    {
-        name: "Basic Attack",
-        inputKey: "5",
-        gesture: "long",
-        sequence: [
-            step("SHIFT+Q", "low", { echoHits: { count: 2, windowMs: 170 } }),
-        ],
-        enabled: true,
-        gcdAbility: "BASIC_ATTACK",
-    },
+    // 5 long: removed (Basic Attack removed from Tank 5)
     {
         name: "Backhand",
         inputKey: "5",
         gesture: "quick_toggle",
-        sequence: [step("ALT+R", "low")],
+        sequence: [step("BACKSPACE", "low")],
         enabled: true,
         gcdAbility: "BACKHAND",
     },
+    // 5 q_toggle: removed (Smash moved to 3 long)
+    // 5 long_toggle: removed (Seismic Grenade moved to 6 F2)
     {
-        name: "Seismic Grenade",
+        name: "Saber Throw",
         inputKey: "5",
-        gesture: "long_toggle",
-        sequence: [step("ALT+NUMPAD4", "low")],
+        gesture: "quick_f2",
+        sequence: [
+            step("SHIFT+M", "low", { echoHits: { count: 2, windowMs: 170 } }),
+        ],
         enabled: true,
-        gcdAbility: "SEISMIC_GRENADE",
+        gcdAbility: "SABER_THROW",
+    },
+    {
+        name: "Focus Mod + Saber Throw",
+        inputKey: "5",
+        gesture: "long_f2",
+        sequence: [
+            holdModifier("7", 107, 128),
+            step("SHIFT+M", "low", { echoHits: { count: 3, windowMs: 170 } }),
+        ],
+        enabled: true,
+        gcdAbility: "SABER_THROW",
     },
     // ==========================================================================
     // KEY: 6 (Custom toggle thresholds: 415ms normal, 320ms toggled)
@@ -215,49 +251,55 @@ export const OMEGA_BINDINGS = [
         name: "Ravage",
         inputKey: "6",
         gesture: "quick",
-        sequence: [
-            step("SHIFT+K", "low", { echoHits: { count: 2, windowMs: 170 } }),
-        ],
+        sequence: [step("ALT+J", "low", { echoHits: { count: 4, windowMs: 170 } })],
         enabled: true,
         gcdAbility: "RAVAGE",
     },
-    {
-        name: "Endure Pain + Drop Timer",
-        inputKey: "6",
-        gesture: "long",
-        sequence: [step("SHIFT+,", "low"), timerStep("drop", 16, "drop")],
-        enabled: true,
-    },
+    // 6 long: removed (Endure Pain moved to SPACEBAR)
     {
         name: "Force Push",
         inputKey: "6",
         gesture: "quick_toggle",
-        sequence: [step("ALT+L", "low")],
+        sequence: [step("ALT+L", "low", { echoHits: { count: 2, windowMs: 170 } })],
         enabled: true,
         gcdAbility: "FORCE_PUSH",
     },
+    // 6 long_toggle: removed (Stun Break removed)
     {
-        name: "Stun Break",
+        name: "Seismic Grenade",
         inputKey: "6",
-        gesture: "long_toggle",
-        sequence: [step("SHIFT+V", "low")],
+        gesture: "quick_f2",
+        sequence: [step("ALT+/", "low")],
         enabled: true,
+        gcdAbility: "SEISMIC_GRENADE",
     },
+    // 6 q_toggle: removed (Seismic Grenade moved to 6 F2)
     // ==========================================================================
     // KEY: W (Toggle activator at 260ms)
     // ==========================================================================
     {
-        name: "Center Target + Cog",
+        name: "Close Enemy + Cog",
         inputKey: "W",
         gesture: "quick",
-        sequence: [step("SHIFT+O", "medium"), step("NUMPAD_SUBTRACT", "low")],
+        sequence: [
+            {
+                key: "8",
+                minDelay: 262,
+                maxDelay: 348,
+                echoHits: { count: 1, windowMs: 46 },
+            },
+            step("ALT+F9", "low"),
+        ],
         enabled: true,
     },
     {
         name: "Next Friend + Cog",
         inputKey: "W",
         gesture: "quick_toggle",
-        sequence: [step(".", "medium"), step("NUMPAD_SUBTRACT", "low")],
+        sequence: [
+            { key: ".", minDelay: 262, maxDelay: 348 },
+            step("ALT+F9", "low"),
+        ],
         enabled: true,
     },
     // W long/long_toggle: none (becomes toggle activator)
@@ -268,14 +310,20 @@ export const OMEGA_BINDINGS = [
         name: "Next Target + Cog",
         inputKey: "Y",
         gesture: "quick",
-        sequence: [step("V", "medium"), step("NUMPAD_SUBTRACT", "low")],
+        sequence: [
+            { key: "V", minDelay: 262, maxDelay: 348 },
+            step("ALT+F9", "low"),
+        ],
         enabled: true,
     },
     {
         name: "Close Friend + Cog",
         inputKey: "Y",
         gesture: "quick_toggle",
-        sequence: [step("'", "medium"), step("NUMPAD_SUBTRACT", "low")],
+        sequence: [
+            { key: "'", minDelay: 262, maxDelay: 348 },
+            step("ALT+F9", "low"),
+        ],
         enabled: true,
     },
     // Y long/long_toggle: none (becomes toggle activator)
@@ -290,37 +338,51 @@ export const OMEGA_BINDINGS = [
         enabled: true,
         gcdAbility: "FORCE_LEAP",
     },
+    // A long: removed (Single Taunt moved to quick_toggle)
     {
         name: "Single Taunt",
         inputKey: "A",
-        gesture: "long",
+        gesture: "quick_toggle",
         sequence: [step("F6", "low", { echoHits: { count: 2, windowMs: 170 } })],
         enabled: true,
     },
     {
-        name: "Saber Throw",
+        name: "Focus Mod + Single Taunt",
         inputKey: "A",
-        gesture: "quick_toggle",
-        sequence: [step("SHIFT+M", "low")],
+        gesture: "long_toggle",
+        sequence: [
+            holdModifier("7", 107, 128),
+            step("F6", "low", { echoHits: { count: 3, windowMs: 170 } }),
+        ],
         enabled: true,
-        gcdAbility: "SABER_THROW",
     },
-    // A long_toggle: none
     // ==========================================================================
     // KEY: S (Dual-purpose: quick=Guard, long=Group Member Toggle)
     // Group member toggle intercepts handled by detector
     // ==========================================================================
     {
-        name: "Guard + Shield",
+        name: "Guard (Bypass TC)",
         inputKey: "S",
         gesture: "quick",
         sequence: [
             { key: "L", bufferTier: "low", name: "Guard" },
             {
-                key: "NUMPAD_MULTIPLY",
+                key: "SHIFT+L",
                 minDelay: 4,
                 maxDelay: 10,
-                name: "Shield Icon (dual-key)",
+                name: "Guard safeguard (SHIFT)",
+            },
+            {
+                key: "CTRL+L",
+                minDelay: 4,
+                maxDelay: 10,
+                name: "Guard safeguard (CTRL)",
+            },
+            {
+                key: "ALT+L",
+                minDelay: 4,
+                maxDelay: 10,
+                name: "Guard safeguard (ALT)",
             },
         ],
         enabled: true,
@@ -333,60 +395,31 @@ export const OMEGA_BINDINGS = [
     // No bindings needed - D key behavior is fully in omegaGestureDetector.ts
     // ==========================================================================
     // ==========================================================================
-    // KEY: B
+    // KEY: B - ALL BINDINGS REMOVED
     // ==========================================================================
-    {
-        name: "Medpack",
-        inputKey: "B",
-        gesture: "quick",
-        sequence: [step("ALT+O", "low")],
-        enabled: true,
-    },
-    {
-        name: "Endure Pain + Drop Timer + Medpack",
-        inputKey: "B",
-        gesture: "long",
-        sequence: [
-            step("SHIFT+,", "low"),
-            timerStep("drop", 16, "drop"),
-            step("ALT+O", "medium"),
-        ],
-        enabled: true,
-    },
-    {
-        name: "Adrenal",
-        inputKey: "B",
-        gesture: "quick_toggle",
-        sequence: [step("ALT+N", "low")],
-        enabled: true,
-    },
+    // B quick: removed (Medpack)
+    // B long: removed (Endure Pain + Drop + Medpack)
+    // B quick_toggle: removed (Adrenal)
     // B long_toggle: none
     // ==========================================================================
     // KEY: I
     // ==========================================================================
     {
-        name: "Gun Icon + Focus Target + Cog",
-        inputKey: "I",
-        gesture: "quick",
-        sequence: [
-            step("NUMPAD_ADD", "low", { name: "Gun Icon" }),
-            step("X", "medium", { name: "Set Focus Target" }),
-            step("NUMPAD_SUBTRACT", "low", { name: "Cog Icon" }),
-        ],
-        enabled: true,
-    },
-    {
         name: "Relic",
         inputKey: "I",
-        gesture: "long",
+        gesture: "quick",
         sequence: [step("SHIFT+X", "low")],
         enabled: true,
     },
+    // I long: removed (Relic is now quick only)
     {
         name: "Focus Mod + Single Taunt",
         inputKey: "I",
         gesture: "quick_toggle",
-        sequence: [holdModifier("SHIFT+R"), step("F6", "low")],
+        sequence: [
+            holdModifier("7"),
+            step("F6", "low"),
+        ],
         enabled: true,
     },
     {
@@ -395,13 +428,27 @@ export const OMEGA_BINDINGS = [
         gesture: "long_toggle",
         sequence: [
             step("F7", "low", { name: "Mass Taunt" }),
-            holdModifier("SHIFT+R"),
+            holdModifier("7"),
             step("F6", "medium", { name: "Single Taunt (to focus)" }),
+            // 2 extra mass taunts right before enrage (35-52ms holds, 80-120ms gaps)
+            {
+                key: "F7",
+                minDelay: 1080,
+                maxDelay: 1140,
+                name: "Mass Taunt repeat 1 (pre-enrage)",
+            },
+            {
+                key: "F7",
+                minDelay: 80,
+                maxDelay: 120,
+                name: "Mass Taunt repeat 2 (pre-enrage)",
+            },
             {
                 key: "F8",
-                minDelay: 1200,
-                maxDelay: 1300,
-                name: "Enrage (1.3s delay)",
+                minDelay: 80,
+                maxDelay: 120,
+                name: "Enrage",
+                echoHits: { count: 2, windowMs: 170 },
             },
         ],
         enabled: true,
@@ -413,65 +460,70 @@ export const OMEGA_BINDINGS = [
         name: "Previous Target + Cog",
         inputKey: "T",
         gesture: "quick",
-        sequence: [step("SHIFT+N", "medium"), step("NUMPAD_SUBTRACT", "low")],
+        sequence: [
+            { key: "ALT+]", minDelay: 262, maxDelay: 348 },
+            step("ALT+F9", "low"),
+        ],
         enabled: true,
     },
     {
         name: "Previous Friend + Cog",
         inputKey: "T",
         gesture: "long",
-        sequence: [step("ALT+.", "medium"), step("NUMPAD_SUBTRACT", "low")],
+        sequence: [
+            { key: "ALT+.", minDelay: 262, maxDelay: 348 },
+            step("ALT+F9", "low"),
+        ],
         enabled: true,
     },
     {
         name: "Target of Target + Cog",
         inputKey: "T",
         gesture: "quick_toggle",
-        sequence: [step("M", "medium"), step("NUMPAD_SUBTRACT", "low")],
+        sequence: [
+            { key: "M", minDelay: 262, maxDelay: 348 },
+            step("ALT+F9", "low"),
+        ],
         enabled: true,
     },
     {
         name: "Focus Target's Target of Target + Cog",
         inputKey: "T",
         gesture: "long_toggle",
-        sequence: [step("J", "medium"), step("NUMPAD_SUBTRACT", "low")],
+        sequence: [
+            { key: "J", minDelay: 262, maxDelay: 348 },
+            step("ALT+F9", "low"),
+        ],
         enabled: true,
     },
     // ==========================================================================
     // KEY: U
     // ==========================================================================
     {
-        name: "Saber Ward",
-        inputKey: "U",
-        gesture: "quick",
-        sequence: [step(",", "low")],
-        enabled: true,
-    },
-    {
-        name: "Invincible",
-        inputKey: "U",
-        gesture: "long",
-        sequence: [step("ALT+M", "low")],
-        enabled: true,
-    },
-    {
         name: "Enraged Defense",
         inputKey: "U",
-        gesture: "quick_toggle",
+        gesture: "quick",
         sequence: [step("SHIFT+.", "low")],
+        enabled: true,
+    },
+    // U long: removed (Invincible removed)
+    {
+        name: "Saber Ward",
+        inputKey: "U",
+        gesture: "quick_toggle",
+        sequence: [step(",", "low")],
         enabled: true,
     },
     // U long_toggle: none
     // ==========================================================================
-    // KEY: H
+    // KEY: H (Intercede handled in-game, app sends Focus Mod + Single Taunt)
     // ==========================================================================
     {
-        name: "Intercede",
+        name: "Focus Mod + Single Taunt + Relic Two",
         inputKey: "H",
         gesture: "quick",
-        sequence: [step(";", "low")],
+        sequence: [holdModifier("7"), step("F6", "low"), step("ALT+X", "low")],
         enabled: true,
-        gcdAbility: "INTERCEDE",
     },
     // H long, quick_toggle, long_toggle: none
     // ==========================================================================
@@ -508,17 +560,9 @@ export const OMEGA_BINDINGS = [
     },
     // C double-tap: ESCAPE (handled by detector special key callback)
     // ==========================================================================
-    // KEY: = (Gap-based only)
+    // KEY: = (Gap-based only) - NO BINDINGS
     // ==========================================================================
-    // = single: none
-    {
-        name: "Smash",
-        inputKey: "=",
-        gesture: "quick", // Maps from double-tap detection
-        sequence: [step("]", "low", { echoHits: { count: 2, windowMs: 170 } })],
-        enabled: true,
-        gcdAbility: "SMASH",
-    },
+    // = double-tap Smash: removed
     // ==========================================================================
     // KEY: F2 (Gap-based only)
     // ==========================================================================
@@ -547,6 +591,29 @@ export const OMEGA_BINDINGS = [
     },
     // MIDDLE_CLICK quick_toggle / long_toggle: none
     // MIDDLE_CLICK double-tap: Max Zoom Out (would need detector support)
+    // ==========================================================================
+    // S TOGGLE BINDINGS (intercepted by detector, documented here for lookup)
+    // ==========================================================================
+    {
+        name: "Target of Target + Cog (S Toggle)",
+        inputKey: "5",
+        gesture: "quick_s_toggle",
+        sequence: [
+            { key: "M", minDelay: 262, maxDelay: 348 },
+            step("ALT+F9", "low"),
+        ],
+        enabled: true,
+    },
+    {
+        name: "Focus ToT + Cog (S Toggle)",
+        inputKey: "6",
+        gesture: "quick_s_toggle",
+        sequence: [
+            { key: "J", minDelay: 262, maxDelay: 348 },
+            step("ALT+F9", "low"),
+        ],
+        enabled: true,
+    },
 ];
 // ============================================================================
 // BINDING LOOKUP BUILDER
@@ -671,14 +738,25 @@ export function exportOmegaProfile() {
             W: { threshold: 260 },
             Y: { threshold: 308 },
         },
-        bindings: OMEGA_BINDINGS.map((b) => ({
-            inputKey: b.inputKey,
-            gesture: b.gesture,
-            name: b.name,
-            sequence: b.sequence,
-            enabled: b.enabled,
-            gcdAbility: b.gcdAbility,
-        })),
+        bindings: [
+            ...OMEGA_BINDINGS.map((b) => ({
+                inputKey: b.inputKey,
+                gesture: b.gesture,
+                name: b.name,
+                sequence: b.sequence,
+                enabled: b.enabled,
+                gcdAbility: b.gcdAbility,
+            })),
+            // Add 4+7 combo binding
+            {
+                inputKey: COMBO_7_4_BINDING.inputKey,
+                gesture: COMBO_7_4_BINDING.gesture,
+                name: COMBO_7_4_BINDING.name,
+                sequence: COMBO_7_4_BINDING.sequence,
+                enabled: COMBO_7_4_BINDING.enabled,
+                gcdAbility: COMBO_7_4_BINDING.gcdAbility,
+            },
+        ],
     };
 }
 // ============================================================================
@@ -702,5 +780,22 @@ export function getOmegaStats() {
         gcdAbilities,
     };
 }
+// ============================================================================
+// 4+7 COMBO BINDING
+// ============================================================================
+/**
+ * 4+7 Combo: Close Enemy + Interrupt
+ * Triggered when key 4 is pressed during key 7 hold or within 420ms of release
+ */
+export const COMBO_7_4_BINDING = {
+    name: "4+7 Combo: Close Enemy + Interrupt",
+    inputKey: "4",
+    gesture: "combo_7_4",
+    sequence: [
+        step("8", "low", { echoHits: { count: 1, windowMs: 46 } }), // Close Enemy with targeting echo
+        step("K", "low"), // Interrupt
+    ],
+    enabled: true,
+};
 export default OMEGA_BINDINGS;
 //# sourceMappingURL=omegaMappings.js.map

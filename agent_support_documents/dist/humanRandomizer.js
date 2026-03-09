@@ -344,7 +344,7 @@ export function getHumanBufferDelay(tier) {
  * Get key down duration with human-like randomization
  * Replaces the old weighted distribution with sophisticated approach
  */
-export function getHumanKeyDownDuration(min = 23, max = 38) {
+export function getHumanKeyDownDuration(min = 38, max = 53) {
     return getRandomizer().generate(min, max, "keydown");
 }
 /**

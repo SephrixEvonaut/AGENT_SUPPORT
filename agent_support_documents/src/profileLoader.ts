@@ -45,6 +45,7 @@ export class ProfileLoader {
   private profileDir: string;
   private lastCompiled: CompiledProfile | null = null;
   private keyProfiles: Map<string, KeyProfile> = new Map();
+  private groupMemberMappings: Record<string, [string, string]> | null = null;
 
   constructor(profileDir: string = "./profiles") {
     this.profileDir = profileDir;
@@ -302,6 +303,14 @@ export class ProfileLoader {
         profile.macros = [];
       }
 
+      // Extract group member toggle mappings if present
+      this.groupMemberMappings = null;
+      const rawProfile = profile as any;
+      if (rawProfile.groupMemberToggle?.mappings) {
+        this.groupMemberMappings = rawProfile.groupMemberToggle.mappings;
+        console.log(`🎯 Found group member toggle mappings in profile`);
+      }
+
       // Load per-key calibrated profiles if present
       this.keyProfiles.clear();
       if (profile.keyProfiles) {
@@ -413,6 +422,14 @@ export class ProfileLoader {
    */
   getKeyProfiles(): Map<string, KeyProfile> {
     return new Map(this.keyProfiles);
+  }
+
+  /**
+   * Get group member toggle mappings from profile (if present)
+   * Returns null if profile doesn't define custom mappings
+   */
+  getGroupMemberMappings(): Record<string, [string, string]> | null {
+    return this.groupMemberMappings;
   }
 
   /**

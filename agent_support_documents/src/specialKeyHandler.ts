@@ -4,8 +4,8 @@
 //
 // This module handles the special key output events from the Omega gesture
 // detector, including:
-// - D key Retaliate accumulator (outputs multiple R presses)
-// - S key Group Member Toggle (outputs NUMPAD + NUMPAD_SUBTRACT sequences)
+// - D key R streaming (1 R per event, called every 120ms while D held)
+// - S key Group Member Toggle (outputs target key + cog)
 // - C key double-tap (outputs ESCAPE)
 // - = key double-tap (outputs Smash → ])
 //
@@ -13,6 +13,9 @@
 
 import { SpecialKeyOutputEvent } from "./omegaGestureDetector.js";
 import { getHumanDelay, getHumanKeyDownDuration } from "./humanRandomizer.js";
+import { getQueuePressureMonitor } from "./queuePressureMonitor.js";
+import { type BackendMode } from "./keyOutputAdapter.js";
+import { type TeensyExecutor } from "./teensyExecutor.js";
 
 /**
  * Key press callback for executing actual key outputs
@@ -29,8 +32,14 @@ export interface SpecialKeyHandlerConfig {
   /** Callback to press a key with specified hold duration */
   onKeyPress: KeyPressCallback;
 
+  /** Callback to suppress a key in the gesture detector (prevents echo) */
+  onSuppressKey?: (key: string, durationMs: number) => void;
+
   /** Enable debug logging */
   debug?: boolean;
+
+  /** Backend mode - 'software' enables pressure monitoring, 'teensy' disables it */
+  backendMode?: BackendMode;
 }
 
 /**
@@ -43,13 +52,58 @@ export class SpecialKeyHandler {
   private pendingQueue: SpecialKeyOutputEvent[] = [];
   private isShutdown: boolean = false;
 
-  // D key overflow management - 500ms window after D release
-  private dReleaseTime: number | null = null;
-  private dReleased: boolean = false; // Hard stop flag
-  private readonly D_OVERFLOW_CUTOFF_MS = 500; // 500ms to drain queue after D release
+  // D key stream state - simple flag to block Rs after release
+  private dStreamActive: boolean = false;
+
+  // TTS state
+  private sayModule: any = null;
+  private ttsAvailable: boolean = false;
+  private ttsSpeaking: boolean = false;
 
   constructor(config: SpecialKeyHandlerConfig) {
     this.config = config;
+    this.initializeTTS();
+  }
+
+  /**
+   * Initialize TTS module (say package)
+   */
+  private async initializeTTS(): Promise<void> {
+    try {
+      const sayImport = await import("say");
+      this.sayModule = sayImport.default || sayImport;
+      this.ttsAvailable = true;
+      console.log("[SpecialKey] TTS module loaded successfully");
+    } catch {
+      console.warn("[SpecialKey] TTS module (say) not available");
+      this.ttsAvailable = false;
+    }
+  }
+
+  /**
+   * Speak a TTS message. Returns a promise that resolves when done speaking.
+   */
+  private speakTTS(message: string): void {
+    if (!this.ttsAvailable || !this.sayModule) {
+      console.log(`[SpecialKey][TTS DISABLED] Would speak: "${message}"`);
+      return;
+    }
+    try {
+      this.ttsSpeaking = true;
+      this.sayModule.speak(message, undefined, undefined, () => {
+        this.ttsSpeaking = false;
+      });
+    } catch (error) {
+      console.error(`[SpecialKey] TTS error:`, error);
+      this.ttsSpeaking = false;
+    }
+  }
+
+  /**
+   * Check if TTS is currently speaking
+   */
+  isTTSSpeaking(): boolean {
+    return this.ttsSpeaking;
   }
 
   /**
@@ -58,26 +112,21 @@ export class SpecialKeyHandler {
   async handleEvent(event: SpecialKeyOutputEvent): Promise<void> {
     if (this.isShutdown) return;
 
-    // D release MUST be handled immediately - don't queue it!
-    // This sets the hard stop flag RIGHT when D is released
+    // D release MUST be handled immediately - sets flag to block future Rs
     if (event.source === "d_release") {
       this.handleDRelease();
-      return; // Don't queue or process further
+      return;
     }
 
-    // Reset flags when D accumulation starts/restarts
-    if (event.source === "d_retaliate") {
-      // If dReleased is true, D was just pressed again - reset flags
-      if (this.dReleased) {
-        this.dReleased = false;
-        this.dReleaseTime = null;
-      }
+    // D stream start - mark as active
+    if (event.source === "d_stream") {
+      this.dStreamActive = true;
     }
 
     // Queue events if currently executing
     if (this.isExecuting) {
-      // Don't queue d_retaliate if D was already released
-      if (event.source === "d_retaliate" && this.dReleased) {
+      // Don't queue d_stream if D was already released
+      if (event.source === "d_stream" && !this.dStreamActive) {
         console.log(`[SpecialKey] R blocked - D already released`);
         return;
       }
@@ -98,14 +147,17 @@ export class SpecialKeyHandler {
 
     try {
       switch (event.source) {
-        case "d_retaliate":
-          await this.processRetaliateOutput(event);
+        case "d_stream":
+          await this.processDStreamOutput(event);
           break;
         case "d_release":
-          // D key released - start 500ms cutoff timer
           this.handleDRelease();
           break;
+        case "d_toggle_tts":
+          this.processDToggleTTS(event);
+          break;
         case "s_group_member":
+        case "s_target_of_target":
           await this.processGroupMemberOutput(event);
           break;
         case "c_escape":
@@ -114,8 +166,19 @@ export class SpecialKeyHandler {
         case "equals_smash":
           await this.processSmashOutput(event);
           break;
+        case "middle_click_zoom_out":
+          await this.processMiddleClickZoomOut(event);
+          break;
         default:
-          console.warn(`Unknown special key source: ${event.source}`);
+          // Handle any direct_output with keys
+          if (event.keys && event.keys.length > 0) {
+            await this.processGroupMemberOutput(event);
+          }
+          // Handle TTS on any event with ttsMessage
+          if (event.ttsMessage) {
+            this.speakTTS(event.ttsMessage);
+          }
+          break;
       }
     } catch (error) {
       console.error(`Special key handler error:`, error);
@@ -134,117 +197,81 @@ export class SpecialKeyHandler {
    * Handle D key release - IMMEDIATELY stop all R processing
    */
   private handleDRelease(): void {
-    this.dReleaseTime = performance.now();
-    this.dReleased = true; // Hard stop flag
+    this.dStreamActive = false;
 
-    // IMMEDIATELY clear all pending d_retaliate events - don't wait!
-    const beforeCount = this.pendingQueue.length;
+    // Clear all pending d_stream events from queue
     this.pendingQueue = this.pendingQueue.filter(
-      (e) => e.source !== "d_retaliate",
-    );
-    const cleared = beforeCount - this.pendingQueue.length;
-
-    console.log(
-      `[SpecialKey] D released - HARD STOP - cleared ${cleared} pending Rs`,
+      (e) => e.source !== "d_stream",
     );
   }
 
   /**
-   * Check if D overflow window has expired
+   * Process D toggle TTS event ("on on on" / "off off off")
    */
-  private isDOverflowExpired(): boolean {
-    // Hard stop when D is released
-    if (this.dReleased) return true;
+  private processDToggleTTS(event: SpecialKeyOutputEvent): void {
+    if (event.ttsMessage) {
+      console.log(`[SpecialKey] D Toggle TTS: "${event.ttsMessage}"`);
+      this.speakTTS(event.ttsMessage);
+    }
 
-    if (this.dReleaseTime === null) return false;
-
-    const elapsed = performance.now() - this.dReleaseTime;
-    return elapsed > this.D_OVERFLOW_CUTOFF_MS;
+    // Also process any keys if present
+    if (event.keys && event.keys.length > 0) {
+      this.processGroupMemberOutput(event);
+    }
   }
 
   /**
-   * Process D key Retaliate output
-   * Outputs [count] R presses with randomized timing
+   * Process D key stream output - sends a single R
+   * Called every 290ms by the interval in omegaGestureDetector (after 120ms initial delay)
+   * Each R is held for 36-41ms (randomized)
    */
-  private async processRetaliateOutput(
+  private async processDStreamOutput(
     event: SpecialKeyOutputEvent,
   ): Promise<void> {
-    // Check if D overflow window expired - drop this R press
-    if (this.isDOverflowExpired()) {
-      if (this.config.debug) {
-        console.log(`[SpecialKey] R dropped - 150ms overflow expired`);
-      }
-      // Aggressively clear ALL remaining d_retaliate events from queue
-      const beforeCount = this.pendingQueue.length;
-      this.pendingQueue = this.pendingQueue.filter(
-        (e) => e.source !== "d_retaliate",
-      );
-      const cleared = beforeCount - this.pendingQueue.length;
-      if (cleared > 0 && this.config.debug) {
-        console.log(
-          `[SpecialKey] Cleared ${cleared} overflow R events from queue`,
-        );
-      }
+    // Safety check - don't send if D was released
+    if (!this.dStreamActive) {
       return;
     }
 
-    const { keys, timings } = event;
-
-    if (this.config.debug) {
-      console.log(`[SpecialKey] Retaliate: ${keys.length} R presses`);
+    if (event.keys.length === 0) {
+      return;
     }
 
-    // Default timings if not provided (faster by ~30ms)
-    const keyDownRange = timings?.keyDownMs ?? [20, 46];
-    const gapRange = timings?.gapMs ?? [25, 40];
+    // Get hold duration from event timings (36-41ms)
+    const keyDownRange = event.timings?.keyDownMs ?? [36, 41];
+    const holdDuration = getHumanDelay(
+      keyDownRange[0],
+      keyDownRange[1],
+      "d_stream_hold",
+    );
 
-    for (let i = 0; i < keys.length; i++) {
-      // Check overflow BEFORE each R press - stop immediately if expired
-      if (this.isShutdown || this.isDOverflowExpired()) {
-        if (this.isDOverflowExpired() && this.config.debug) {
-          console.log(
-            `[SpecialKey] R sequence stopped mid-execution - overflow expired`,
-          );
-          // Clear any remaining in queue
-          this.pendingQueue = this.pendingQueue.filter(
-            (e) => e.source !== "d_retaliate",
-          );
-        }
-        break;
-      }
+    // Final safety check before pressing
+    if (!this.dStreamActive) {
+      return;
+    }
 
-      // Get randomized timing
-      const holdDuration = getHumanDelay(
-        keyDownRange[0],
-        keyDownRange[1],
-        "d_retaliate_hold",
-      );
+    // Press the R key
+    await this.config.onKeyPress("R", holdDuration);
 
-      // Press the key
-      await this.config.onKeyPress("R", holdDuration);
-
-      if (this.config.debug) {
-        console.log(
-          `   R press ${i + 1}/${keys.length}: held ${holdDuration}ms`,
-        );
-      }
-
-      // Wait for gap before next press (except for last press)
-      if (i < keys.length - 1) {
-        const gap = getHumanDelay(gapRange[0], gapRange[1], "d_retaliate_gap");
-        await this.sleep(gap);
-      }
+    // Record R stream output for pressure monitoring (software mode only)
+    if (this.config.backendMode !== "teensy") {
+      const pressureMonitor = getQueuePressureMonitor();
+      pressureMonitor.recordOutput("R_Stream", "R", holdDuration);
     }
   }
 
   /**
    * Process S key Group Member output
-   * Outputs target key followed by NUMPAD_SUBTRACT
+   * Outputs target key followed by cog key
    */
   private async processGroupMemberOutput(
     event: SpecialKeyOutputEvent,
   ): Promise<void> {
     const { keys } = event;
+    const usePressureMonitor = this.config.backendMode !== "teensy";
+    const pressureMonitor = usePressureMonitor
+      ? getQueuePressureMonitor()
+      : null;
 
     if (this.config.debug) {
       console.log(`[SpecialKey] Group Member: ${keys.join(" → ")}`);
@@ -257,7 +284,17 @@ export class SpecialKeyHandler {
       const key = keys[i];
       const holdDuration = getHumanKeyDownDuration();
 
+      // Suppress synthetic key to prevent re-detection by gesture detector
+      // Parse base key from modifier combos like "CTRL+V" → suppress "V"
+      const baseKey = key.includes("+") ? key.split("+").pop()! : key;
+      if (this.config.onSuppressKey) {
+        this.config.onSuppressKey(baseKey, holdDuration + 100);
+      }
+
       await this.config.onKeyPress(key, holdDuration);
+      if (pressureMonitor) {
+        pressureMonitor.recordOutput("S_GroupMember", key, holdDuration);
+      }
 
       // Short gap between keys
       if (i < keys.length - 1) {
@@ -279,6 +316,12 @@ export class SpecialKeyHandler {
 
     const holdDuration = getHumanKeyDownDuration();
     await this.config.onKeyPress("ESCAPE", holdDuration);
+
+    // Record for pressure monitoring (software mode only)
+    if (this.config.backendMode !== "teensy") {
+      const pressureMonitor = getQueuePressureMonitor();
+      pressureMonitor.recordOutput("C_Escape", "ESCAPE", holdDuration);
+    }
   }
 
   /**
@@ -291,10 +334,36 @@ export class SpecialKeyHandler {
       console.log(`[SpecialKey] Smash: ] (via gesture binding)`);
     }
 
-    // Smash is typically handled through the normal gesture binding system
-    // This is here for direct output if needed
     const holdDuration = getHumanKeyDownDuration();
     await this.config.onKeyPress("]", holdDuration);
+
+    // Record for pressure monitoring (software mode only)
+    if (this.config.backendMode !== "teensy") {
+      const pressureMonitor = getQueuePressureMonitor();
+      pressureMonitor.recordOutput("Equals_Smash", "]", holdDuration);
+    }
+  }
+
+  /**
+   * Process MIDDLE_CLICK double-tap Max Zoom Out (PAGEDOWN)
+   */
+  private async processMiddleClickZoomOut(
+    event: SpecialKeyOutputEvent,
+  ): Promise<void> {
+    console.log(`[SpecialKey] Middle Click Zoom Out: PAGEDOWN`);
+
+    const holdDuration = getHumanKeyDownDuration();
+    await this.config.onKeyPress("PAGEDOWN", holdDuration);
+
+    // Record for pressure monitoring (software mode only)
+    if (this.config.backendMode !== "teensy") {
+      const pressureMonitor = getQueuePressureMonitor();
+      pressureMonitor.recordOutput(
+        "MiddleClick_ZoomOut",
+        "PAGEDOWN",
+        holdDuration,
+      );
+    }
   }
 
   /**
@@ -309,6 +378,7 @@ export class SpecialKeyHandler {
    */
   shutdown(): void {
     this.isShutdown = true;
+    this.dStreamActive = false;
     this.pendingQueue = [];
   }
 }
@@ -318,11 +388,29 @@ export class SpecialKeyHandler {
 // ============================================================================
 
 /**
+ * Options for creating a special key handler
+ */
+export interface CreateSpecialKeyHandlerOptions {
+  debug?: boolean;
+  /** Callback to suppress keys in gesture detector (prevents echo) */
+  onSuppressKey?: (key: string, durationMs: number) => void;
+  /** Backend mode - determines if pressure monitoring is active */
+  backendMode?: BackendMode;
+  /** Optional Teensy executor for hardware key output */
+  teensyExecutor?: TeensyExecutor | null;
+}
+
+/**
  * Create a special key handler with RobotJS integration
  */
 export async function createSpecialKeyHandler(
-  debug?: boolean,
+  optionsOrDebug?: boolean | CreateSpecialKeyHandlerOptions,
 ): Promise<SpecialKeyHandler> {
+  // Support legacy boolean signature and new options object
+  const options: CreateSpecialKeyHandlerOptions =
+    typeof optionsOrDebug === "boolean"
+      ? { debug: optionsOrDebug }
+      : optionsOrDebug || {};
   // Try to import robotjs
   let robot: any;
   try {
@@ -334,15 +422,33 @@ export async function createSpecialKeyHandler(
   }
 
   return new SpecialKeyHandler({
-    debug,
+    debug: options.debug,
+    onSuppressKey: options.onSuppressKey,
+    backendMode: options.backendMode || "software",
     onKeyPress: async (key: string, holdDurationMs: number) => {
-      if (!robot) {
-        console.log(`[MOCK] Key: ${key} (${holdDurationMs}ms)`);
-        return;
-      }
-
       // Map special key names to RobotJS format
       const keyMap: Record<string, string> = {
+        // Punctuation keys
+        GRAVE: "`",
+        BACKSLASH: "\\",
+        SLASH: "/",
+        MINUS: "-",
+        LBRACKET: "[",
+        RBRACKET: "]",
+        COMMA: ",",
+        APOSTROPHE: "'",
+        // Navigation/editing keys
+        PAGEUP: "pageup",
+        PAGEDOWN: "pagedown",
+        DELETE: "delete",
+        BACKSPACE: "backspace",
+        TAB: "tab",
+        // Function keys for group member targeting
+        F10: "f10",
+        F11: "f11",
+        F12: "f12",
+        INSERT: "insert",
+        // Legacy numpad support
         NUMPAD1: "numpad_1",
         NUMPAD2: "numpad_2",
         NUMPAD3: "numpad_3",
@@ -360,16 +466,57 @@ export async function createSpecialKeyHandler(
         ESCAPE: "escape",
       };
 
-      const robotKey = keyMap[key] || key.toLowerCase();
+      // Parse modifier+key combos like "CTRL+B" or "SHIFT+Q"
+      const parts = key.split("+").map((p) => p.trim());
+      const modifiers: string[] = [];
+      let baseKey = parts[parts.length - 1];
+
+      // Collect modifiers (all parts except last)
+      for (let i = 0; i < parts.length - 1; i++) {
+        const m = parts[i].toUpperCase();
+        if (m === "CTRL" || m === "CONTROL") modifiers.push("control");
+        else if (m === "SHIFT") modifiers.push("shift");
+        else if (m === "ALT") modifiers.push("alt");
+      }
+
+      // Map the base key
+      const robotKey = keyMap[baseKey] || baseKey.toLowerCase();
+
+      // TEENSY PATH: route through hardware executor
+      const teensy = options.teensyExecutor;
+      if (options.backendMode === "teensy" && teensy) {
+        try {
+          await teensy.pressKey(robotKey, holdDurationMs, modifiers);
+        } catch (error) {
+          console.error(`[Teensy] Failed to press key: ${key}`, error);
+        }
+        return;
+      }
+
+      // SOFTWARE PATH: use RobotJS
+      if (!robot) {
+        console.log(`[MOCK] Key: ${key} (${holdDurationMs}ms)`);
+        return;
+      }
 
       try {
+        // Press modifiers down first
+        for (const mod of modifiers) {
+          robot.keyToggle(mod, "down");
+        }
+
         robot.keyToggle(robotKey, "down");
         await new Promise((resolve) => setTimeout(resolve, holdDurationMs));
         robot.keyToggle(robotKey, "up");
+
+        // Release modifiers
+        for (const mod of modifiers) {
+          robot.keyToggle(mod, "up");
+        }
       } catch (error) {
-        // Fallback to keyTap
+        // Fallback to keyTap with modifiers
         try {
-          robot.keyTap(robotKey);
+          robot.keyTap(robotKey, modifiers);
         } catch {
           console.error(`Failed to press key: ${key}`);
         }

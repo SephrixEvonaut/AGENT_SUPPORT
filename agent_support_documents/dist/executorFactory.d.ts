@@ -2,8 +2,12 @@ import { MacroBinding } from "./types.js";
 import { ExecutionCallback } from "./sequenceExecutor.js";
 /**
  * Available execution backends
+ * - robotjs: Software injection via SendInput API (has mouse stutter workarounds)
+ * - interception: Kernel-level injection (hardest to detect)
+ * - teensy: Hardware USB HID via Teensy 4.0 serial (no stutter, no workarounds needed)
+ * - mock: Testing only (no keypresses sent)
  */
-export type ExecutorBackend = "robotjs" | "interception" | "mock";
+export type ExecutorBackend = "robotjs" | "interception" | "teensy" | "mock";
 /**
  * Unified executor interface
  * Supports both awaitable and fire-and-forget execution for concurrent sequences
@@ -17,6 +21,13 @@ export interface IExecutor {
     cancelAll?(): void;
     dryRun?(binding: MacroBinding): Promise<void>;
     destroy?(): void;
+    grantSupremacy?(macroName: string): void;
+    revokeSupremacy?(macroName: string): void;
+    isStunBreakBlocked?(): {
+        reason: string;
+        cooldownMs: number;
+    } | null;
+    recordStunBreakUsed?(): void;
 }
 /**
  * Backend configuration

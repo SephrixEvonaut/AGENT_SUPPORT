@@ -1,6 +1,15 @@
-import { CompiledProfile } from "./types.js";
+import { CompiledProfile, ConundrumConflict } from "./types.js";
 import { extractRawKey } from "./utils.js";
 import { getHumanTrafficWait } from "./humanRandomizer.js";
+
+/**
+ * Modifier state for traffic control decisions
+ */
+export interface ModifierState {
+  shift: boolean;
+  alt: boolean;
+  ctrl: boolean;
+}
 
 /**
  * Sleep for a random duration using human-like randomization
@@ -17,8 +26,22 @@ export class TrafficController {
   // Macros with supremacy bypass traffic control entirely
   private supremacyMacros: Set<string> = new Set();
 
+  // Stun Break cooldown tracking
+  private stunBreakCooldownEnd: number = 0;
+  private readonly STUN_BREAK_COOLDOWN_MS = 120000; // 120 seconds
+
+  // Callback to get current modifier state
+  private getModifierState: (() => ModifierState) | null = null;
+
   constructor(compiledProfile: CompiledProfile) {
     this.compiledProfile = compiledProfile;
+  }
+
+  /**
+   * Set callback to get current modifier state for smart conflict detection
+   */
+  setModifierStateCallback(cb: () => ModifierState): void {
+    this.getModifierState = cb;
   }
 
   /**
@@ -49,6 +72,29 @@ export class TrafficController {
     return [...this.supremacyMacros];
   }
 
+  /**
+   * Check if Stun Break is blocked by cooldown
+   * @returns null if available, BlockerInfo if on cooldown
+   */
+  isStunBreakBlocked(): { reason: string; cooldownMs: number } | null {
+    const now = Date.now();
+    if (now < this.stunBreakCooldownEnd) {
+      const remainingMs = this.stunBreakCooldownEnd - now;
+      return {
+        reason: `Stun Break on cooldown`,
+        cooldownMs: remainingMs,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Record Stun Break usage and start cooldown timer
+   */
+  recordStunBreakUsed(): void {
+    this.stunBreakCooldownEnd = Date.now() + this.STUN_BREAK_COOLDOWN_MS;
+  }
+
   async requestCrossing(key: string, macroName?: string): Promise<void> {
     // Supremacy macros bypass traffic control
     if (macroName && this.supremacyMacros.has(macroName)) {
@@ -56,10 +102,42 @@ export class TrafficController {
     }
 
     const raw = extractRawKey(key);
-    const isConundrum = this.compiledProfile.conundrumKeys.has(raw);
 
-    if (!isConundrum) {
+    // R key NEVER cares about traffic control (Retaliate spam)
+    if (raw === "R") {
       return;
+    }
+
+    // TAB is ULTRA-SENSITIVE: never fire if ALT or CTRL are held
+    if (raw === "TAB" && this.getModifierState) {
+      const modState = this.getModifierState();
+      while (modState.alt || modState.ctrl) {
+        // Wait until ALT and CTRL are both released
+        const waitMs = getHumanTrafficWait();
+        await sleep(waitMs);
+        // Re-check modifier state (callback returns fresh state)
+        const freshState = this.getModifierState();
+        if (!freshState.alt && !freshState.ctrl) break;
+      }
+    }
+
+    // Check if this key is a conundrum AND if the conflicting modifier is held
+    const conflict = this.compiledProfile.conundrumConflicts.get(raw);
+    if (!conflict) {
+      // Not a conundrum key, no wait needed
+      return;
+    }
+
+    // Smart conflict detection: only wait if the relevant modifier is held
+    if (this.getModifierState) {
+      const modState = this.getModifierState();
+
+      // Check if the currently held modifier(s) conflict with this key
+      const conflictsNow = this.hasActiveConflict(conflict, modState);
+      if (!conflictsNow) {
+        // The modifier that conflicts with this key is NOT held, safe to proceed
+        return;
+      }
     }
 
     this.queue.push({ key: raw, timestamp: Date.now() });
@@ -71,6 +149,23 @@ export class TrafficController {
     }
 
     this.crossingKey = raw;
+  }
+
+  /**
+   * Check if there's an active conflict based on current modifier state
+   */
+  private hasActiveConflict(
+    conflict: ConundrumConflict,
+    modState: ModifierState,
+  ): boolean {
+    switch (conflict) {
+      case "shift":
+        return modState.shift;
+      case "alt":
+        return modState.alt;
+      case "both":
+        return modState.shift || modState.alt;
+    }
   }
 
   releaseCrossing(key: string): void {

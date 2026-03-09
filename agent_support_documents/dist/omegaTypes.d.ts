@@ -1,8 +1,10 @@
 import { InputKey, MacroBinding, GestureSettings } from "./types.js";
 /**
- * The 4 Omega gesture types
+ * The 8 Omega gesture types (4 base + 4 F2 toggle variants)
+ * F2 toggle is an independent modifier that creates a separate gesture space
+ * combo_7_4: Special combo gesture triggered by key 4 during/after key 7 hold
  */
-export declare const OMEGA_GESTURE_TYPES: readonly ["quick", "long", "quick_toggle", "long_toggle"];
+export declare const OMEGA_GESTURE_TYPES: readonly ["quick", "long", "quick_toggle", "long_toggle", "quick_f2", "long_f2", "quick_toggle_f2", "long_toggle_f2", "combo_7_4", "quick_q_toggle", "long_q_toggle", "quick_s_toggle", "long_s_toggle"];
 export type OmegaGestureType = (typeof OMEGA_GESTURE_TYPES)[number];
 /**
  * Check if a string is a valid Omega gesture type
@@ -16,7 +18,7 @@ export declare const OMEGA_KEY_THRESHOLDS: Record<InputKey, number>;
 /**
  * Special threshold for key "6" when in toggled mode
  */
-export declare const KEY_6_TOGGLED_THRESHOLD = 320;
+export declare const KEY_6_TOGGLED_THRESHOLD = 510;
 /**
  * Keys that require double-tap detection (wait for multi-press window)
  */
@@ -69,6 +71,7 @@ export interface OmegaGestureEvent {
     holdDuration?: number;
     wasToggled: boolean;
     toggleActivator?: "W" | "Y";
+    wasF2Toggle?: boolean;
 }
 /**
  * Callback type for Omega gesture events

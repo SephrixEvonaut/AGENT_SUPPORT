@@ -3,6 +3,7 @@ import { GestureDetector, GestureCallback } from "../src/gestureDetector.js";
 import { SequenceExecutor, ExecutionEvent } from "../src/sequenceExecutor.js";
 import { compileProfile } from "../src/profileCompiler.js";
 import { TrafficController } from "../src/trafficController.js";
+import { resetQueuePressureMonitor } from "../src/queuePressureMonitor.js";
 import {
   GestureSettings,
   GestureEvent,
@@ -260,6 +261,7 @@ describe("Staggered Sequence Execution - Timing Analysis", () => {
 
   afterEach(() => {
     executor.shutdown();
+    resetQueuePressureMonitor();
   });
 
   it("sequences triggered 50ms apart all start execution (no dropped gestures)", async () => {
@@ -439,9 +441,10 @@ describe("Staggered Sequence Execution - Timing Analysis", () => {
     executor.executeDetached(tieredMacros[0]);
     executor.executeDetached(tieredMacros[1]);
 
-    await sleep(700);
+    await sleep(1500);
 
     // Both should complete - buffer tiers don't block each other
+    // Note: output pacing adds up to 410ms overhead across concurrent sequences
     const completed = events.filter((e) => e.type === "completed");
     expect(completed.length).toBeGreaterThanOrEqual(2);
   });
@@ -497,6 +500,7 @@ describe("Staggered Execution with Traffic Control", () => {
 
   afterEach(() => {
     executor.shutdown();
+    resetQueuePressureMonitor();
   });
 
   it("traffic control only intervenes for conundrum keys", async () => {
@@ -525,8 +529,8 @@ describe("Staggered Execution with Traffic Control", () => {
     await sleep(30);
     expect(executor.getActiveExecutionCount()).toBe(2);
 
-    // Wait for completion
-    await sleep(400);
+    // Wait for completion (output pacing adds overhead to each step)
+    await sleep(1200);
 
     const started = events.filter((e) => e.type === "started");
     const completed = events.filter((e) => e.type === "completed");
@@ -548,9 +552,10 @@ describe("Staggered Execution with Traffic Control", () => {
     expect(completed).toBeDefined();
 
     // Should complete in roughly 80-100ms (2 steps × 40-50ms)
-    // Plus some execution overhead, but NOT traffic control delay
+    // Plus output pacing overhead (~100ms for position 2)
+    // But NOT traffic control delay
     const duration = (completed?.timestamp || 0) - startTime;
-    expect(duration).toBeLessThan(200); // No significant delay
+    expect(duration).toBeLessThan(500); // No traffic control delay (pacing adds ~100ms)
   });
 });
 
@@ -572,6 +577,7 @@ describe("Gesture Detector + Executor Staggered Integration", () => {
   afterEach(() => {
     detector?.reset();
     executor.shutdown();
+    resetQueuePressureMonitor();
   });
 
   it("staggered gesture triggers lead to staggered sequence execution", async () => {
@@ -579,7 +585,8 @@ describe("Gesture Detector + Executor Staggered Integration", () => {
     const handleGesture = (ev: GestureEvent) => {
       gestures.push(ev);
       const binding = STAGGERED_MACROS.find(
-        (m) => m.trigger.key === ev.inputKey && m.trigger.gesture === ev.gesture
+        (m) =>
+          m.trigger.key === ev.inputKey && m.trigger.gesture === ev.gesture,
       );
       if (binding) {
         executor.executeDetached(binding);
@@ -619,8 +626,8 @@ describe("Gesture Detector + Executor Staggered Integration", () => {
     await sleep(15);
     detector.handleKeyUp("6");
 
-    // Wait for all gestures and sequences
-    await sleep(400);
+    // Wait for all gestures and sequences (output pacing adds overhead per step)
+    await sleep(1500);
 
     // All 3 gestures should have fired
     expect(gestures.length).toBe(3);

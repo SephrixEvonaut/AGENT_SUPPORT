@@ -1,4 +1,4 @@
-export declare const INPUT_KEYS: readonly ["W", "A", "S", "D", "B", "I", "Y", "U", "T", "C", "H", "P", "E", "F", "G", "F2", "1", "2", "3", "4", "5", "6", "7", "8", "9", "=", "MIDDLE_CLICK", "NUMPAD8"];
+export declare const INPUT_KEYS: readonly ["W", "A", "S", "D", "B", "I", "Y", "U", "T", "C", "H", "P", "E", "F", "G", "F2", "SPACEBAR", "Q", "1", "2", "3", "4", "5", "6", "7", "8", "=", "MIDDLE_CLICK", ";", "F10", "F11", "F12", "INSERT"];
 export type InputKey = (typeof INPUT_KEYS)[number];
 export declare const OUTPUT_KEYS: readonly ["J", "K", "L", "M", "N", "O", "Q", "R", "V", "X", "Z", ",", ".", "'", ";", "]", "[", "F6", "F7", "F8", "F9", "NUMPAD0", "NUMPAD1", "NUMPAD2", "NUMPAD3", "NUMPAD4", "NUMPAD5", "NUMPAD6", "NUMPAD7", "NUMPAD8", "NUMPAD9", "NUMPAD_ADD", "NUMPAD_MULTIPLY", "NUMPAD_DECIMAL", "NUMPAD_SUBTRACT", "BACKSPACE", "END", "ESCAPE"];
 export type OutputKey = (typeof OUTPUT_KEYS)[number];
@@ -80,13 +80,13 @@ export interface SequenceStep {
     scrollMagnitude?: number;
     /**
      * Echo hits: rapid repeat keypresses during the buffer phase.
-     * The key is held and re-pressed 2-3 times within the specified window
+     * The key is held and re-pressed 1-4 times within the specified window
      * to ensure ability activation even with game lag.
-     * Format: { count: 2|3, windowMs: total window time (e.g., 170) }
+     * Format: { count: 1|2|3|4, windowMs: total window time (e.g., 170) }
      * Presses occur during buffer, not as extra delays.
      */
     echoHits?: {
-        count: 2 | 3 | 4;
+        count: 1 | 2 | 3 | 4;
         windowMs: number;
     };
     /**
@@ -102,7 +102,7 @@ export interface SequenceStep {
  * Used to track which abilities trigger the 1.275s global cooldown
  * and their individual cooldown timers.
  */
-export type GCDAbilityType = "CRUSHING_BLOW" | "FORCE_SCREAM" | "AEGIS_ASSAULT" | "SWEEPING_SLASH" | "VICIOUS_SLASH" | "BASIC_ATTACK" | "RAVAGE" | "SMASH" | "VICIOUS_THROW" | "SABER_THROW" | "FORCE_CHOKE" | "BACKHAND" | "FORCE_PUSH" | "ELECTRO_STUN" | "SEISMIC_GRENADE" | "INTERCEDE" | "GUARD" | "FORCE_LEAP";
+export type GCDAbilityType = "CRUSHING_BLOW" | "FORCE_SCREAM" | "AEGIS_ASSAULT" | "SWEEPING_SLASH" | "VICIOUS_SLASH" | "BASIC_ATTACK" | "RAVAGE" | "SMASH" | "VICIOUS_THROW" | "SABER_THROW" | "FORCE_CHOKE" | "BACKHAND" | "FORCE_PUSH" | "ELECTRO_STUN" | "SEISMIC_GRENADE" | "INTERCEDE" | "GUARD" | "FORCE_LEAP" | "RAGING_BURST" | "FORCE_CRUSH" | "OBLITERATE" | "INNERVATE" | "DARK_HEAL" | "ROAMING_MEND" | "DARK_INFUSION" | "REVIVIFICATION" | "RESURGENCE" | "ELECTROCUTE" | "CONSUMPTION" | "UNNATURAL_PRESERVATION" | "PURGE" | "FORCE_STORM" | "WHIRLWIND" | "STATIC_BARRIER" | "FORCE_LIGHTNING" | "DEMOLISH" | "AFFLICTION" | "DEATH_FIELD" | "CREEPING_TERROR" | "FORCE_LEECH" | "EXPLOSIVE_PROBE" | "SERIES_OF_SHOTS" | "PLASMA_PROBE" | "FRAG_GRENADE" | "ORBITAL_STRIKE" | "EMP_DISCHARGE" | "FLASH_BANG" | "SNIPE" | "COVERED_ESCAPE" | "SUPPRESSIVE_FIRE" | "LEG_SHOT" | "RAPID_SCAN" | "HEALING_SCAN" | "KOLTO_MISSILE" | "FULL_AUTO" | "EMERGENCY_SCAN" | "KOLTO_SHELL" | "PROGRESSIVE_SCAN" | "ELECTRO_DART" | "POWER_SHOT" | "CLEANSE" | "UNLOAD" | "CONCUSSION_MISSILE" | "PRIMING_SHOT" | "HEATSEEKER_MISSILES" | "BLAZING_BOLTS" | "TRACER_MISSILE" | "DEATH_FROM_ABOVE" | "RAIL_SHOT" | "PLASMA_GRENADE";
 export interface MacroBinding {
     name: string;
     trigger?: {
@@ -138,12 +138,21 @@ export interface MacroProfile {
     macros: MacroBinding[];
 }
 /**
+ * Conundrum conflict type
+ * - 'shift': key conflicts with SHIFT variant only
+ * - 'alt': key conflicts with ALT variant only
+ * - 'both': key conflicts with both SHIFT and ALT variants
+ */
+export type ConundrumConflict = "shift" | "alt" | "both";
+/**
  * Compiled profile for fast runtime lookup
- * - conundrumKeys: raw keys that also appear with modifiers
+ * - conundrumKeys: raw keys that also appear with modifiers (legacy)
+ * - conundrumConflicts: map of key -> which modifier(s) it conflicts with
  * - safeKeys: raw keys that do not appear with modifiers
  */
 export interface CompiledProfile {
     conundrumKeys: Set<string>;
+    conundrumConflicts: Map<string, ConundrumConflict>;
     safeKeys: Set<string>;
 }
 export interface GestureEvent {
@@ -151,6 +160,10 @@ export interface GestureEvent {
     gesture: GestureType;
     timestamp: number;
     holdDuration?: number;
+}
+export interface BlockerInfo {
+    reason: string;
+    cooldownMs: number;
 }
 export declare const SEQUENCE_CONSTRAINTS: {
     readonly MIN_DELAY: 25;

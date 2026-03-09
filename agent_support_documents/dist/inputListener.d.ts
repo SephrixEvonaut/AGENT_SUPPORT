@@ -22,17 +22,36 @@ export declare class StdinInputListener implements IInputListener {
     stop(): void;
     isActive(): boolean;
 }
+export type HotkeyCallback = (hotkey: string) => void;
+/**
+ * Modifier state for traffic control
+ */
+export interface ModifierState {
+    shift: boolean;
+    alt: boolean;
+    ctrl: boolean;
+}
 export declare class GlobalInputListener implements IInputListener {
     private callback;
     private isListening;
     private isStopped;
     private listener;
     private rawEventCallback;
+    private hotkeyCallback;
+    private currentModifierState;
     constructor(callback: InputCallback);
     /**
      * Set a callback to receive ALL raw key events (for debugging peripherals)
      */
     setRawEventCallback(cb: (rawName: string, state: string, rawEvent: any) => void): void;
+    /**
+     * Set a callback for special hotkey combinations (e.g., CTRL+SHIFT+G)
+     */
+    setHotkeyCallback(cb: HotkeyCallback): void;
+    /**
+     * Get current modifier state (for traffic control)
+     */
+    getModifierState(): ModifierState;
     start(): Promise<void>;
     stop(): void;
     isActive(): boolean;
@@ -44,12 +63,22 @@ export declare class InputListener implements IInputListener {
     private callback;
     private initialized;
     private rawEventCallback;
+    private hotkeyCallback;
     private forceStdin;
     constructor(callback: InputCallback);
     /**
      * Enable raw event debugging - shows ALL key events including unrecognized ones
      */
     setRawEventCallback(cb: (rawName: string, state: string, rawEvent: any) => void): void;
+    /**
+     * Set callback for special hotkeys (e.g., CTRL+SHIFT+G for config mode)
+     */
+    setHotkeyCallback(cb: HotkeyCallback): void;
+    /**
+     * Get current modifier state (for traffic control)
+     * Returns shift/alt state from the underlying GlobalInputListener
+     */
+    getModifierState(): ModifierState;
     start(): Promise<void>;
     stop(): void;
     isActive(): boolean;

@@ -16,8 +16,12 @@ import { logger } from "./logger.js";
 
 /**
  * Available execution backends
+ * - robotjs: Software injection via SendInput API (has mouse stutter workarounds)
+ * - interception: Kernel-level injection (hardest to detect)
+ * - teensy: Hardware USB HID via Teensy 4.0 serial (no stutter, no workarounds needed)
+ * - mock: Testing only (no keypresses sent)
  */
-export type ExecutorBackend = "robotjs" | "interception" | "mock";
+export type ExecutorBackend = "robotjs" | "interception" | "teensy" | "mock";
 
 /**
  * Unified executor interface
@@ -32,6 +36,10 @@ export interface IExecutor {
   cancelAll?(): void;
   dryRun?(binding: MacroBinding): Promise<void>;
   destroy?(): void;
+  grantSupremacy?(macroName: string): void;
+  revokeSupremacy?(macroName: string): void;
+  isStunBreakBlocked?(): { reason: string; cooldownMs: number } | null;
+  recordStunBreakUsed?(): void;
 }
 
 /**
@@ -61,7 +69,7 @@ class InterceptionExecutorWrapper implements IExecutor {
 
   constructor(
     executor: InterceptionExecutor | MockInterceptionExecutor,
-    onEvent?: ExecutionCallback
+    onEvent?: ExecutionCallback,
   ) {
     this.executor = executor;
     this.onEvent = onEvent || (() => {});
@@ -80,7 +88,7 @@ class InterceptionExecutorWrapper implements IExecutor {
     this.executeInternal(binding).catch((error) => {
       console.error(
         `❌ Detached execution error for "${binding.name}":`,
-        error
+        error,
       );
     });
   }
@@ -138,7 +146,7 @@ export class ExecutorFactory {
    * Create an executor with the specified backend
    */
   static async create(
-    config: Partial<ExecutorConfig> = {}
+    config: Partial<ExecutorConfig> = {},
   ): Promise<IExecutor> {
     const fullConfig = { ...DEFAULT_CONFIG, ...config };
 
@@ -153,7 +161,7 @@ export class ExecutorFactory {
         logger.debug("Detection level: HARD (appears as hardware input)");
 
         const interception = new InterceptionExecutor(
-          fullConfig.interceptionDllPath
+          fullConfig.interceptionDllPath,
         );
         const initialized = await interception.initialize();
 
@@ -166,8 +174,17 @@ export class ExecutorFactory {
 
         return new InterceptionExecutorWrapper(
           interception,
-          fullConfig.onEvent
+          fullConfig.onEvent,
         );
+
+      case "teensy":
+        logger.debug("Creating Teensy executor (USB HID via serial)");
+        logger.debug("Detection level: LOW (appears as real USB keyboard)");
+        logger.debug("Stutter workarounds: DISABLED (no queue contention)");
+        // TeensySequenceExecutor is created in index.ts where we have async access
+        // to the TeensyExecutor singleton. The factory returns a SequenceExecutor
+        // configured with backendMode='teensy' which disables workarounds.
+        return new SequenceExecutor(fullConfig.onEvent, undefined, "teensy");
 
       case "mock":
         logger.debug("Creating Mock executor (no keypresses)");
@@ -186,7 +203,7 @@ export class ExecutorFactory {
    * Prefers Interception > RobotJS > Mock
    */
   static async createBest(
-    onEvent?: ExecutionCallback
+    onEvent?: ExecutionCallback,
   ): Promise<{ executor: IExecutor; backend: ExecutorBackend }> {
     // Try Interception first (best for anti-cheat)
     if (process.platform === "win32") {
@@ -199,6 +216,18 @@ export class ExecutorFactory {
         });
         return { executor, backend: "interception" };
       }
+    }
+
+    // Try Teensy if available
+    try {
+      const { isTeensyAvailable } = await import("./teensyExecutor.js");
+      if (await isTeensyAvailable()) {
+        logger.debug("Teensy 4.0 detected on USB");
+        const executor = await this.create({ backend: "teensy", onEvent });
+        return { executor, backend: "teensy" };
+      }
+    } catch (error) {
+      // Teensy not available, continue
     }
 
     // Fall back to RobotJS
@@ -245,13 +274,32 @@ export class ExecutorFactory {
       });
     }
 
+    // Check Teensy
+    try {
+      const { isTeensyAvailable } = await import("./teensyExecutor.js");
+      const teensyAvailable = await isTeensyAvailable();
+      backends.push({
+        backend: "teensy",
+        available: teensyAvailable,
+        notes: teensyAvailable
+          ? "USB HID via Teensy 4.0 (no stutter, hardware keyboard)"
+          : "Teensy 4.0 not detected on USB",
+      });
+    } catch {
+      backends.push({
+        backend: "teensy",
+        available: false,
+        notes: "Install serialport: npm install serialport",
+      });
+    }
+
     // Check RobotJS
     try {
       await import("robotjs");
       backends.push({
         backend: "robotjs",
         available: true,
-        notes: "SendInput API (medium detection risk)",
+        notes: "SendInput API (medium detection risk, has stutter workarounds)",
       });
     } catch {
       backends.push({

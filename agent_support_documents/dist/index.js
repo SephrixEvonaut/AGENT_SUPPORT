@@ -10,16 +10,22 @@
 // - Per-key calibrated gesture thresholds
 // - Hot-reload calibration server
 // - NEW: Alpha (12-gesture) vs Omega (4-gesture) system selection
+// - NEW: Queue pressure monitoring for mouse stutter analysis
 //
 // ============================================================================
 import { GestureDetector } from "./gestureDetector.js";
 import { createOmegaGestureDetector, } from "./omegaGestureDetector.js";
 import { InputListener } from "./inputListener.js";
 import { ProfileLoader, DEFAULT_GESTURE_SETTINGS } from "./profileLoader.js";
+import { getQueuePressureMonitor } from "./queuePressureMonitor.js";
 import { OMEGA_GESTURE_TYPES, } from "./omegaTypes.js";
 import { ExecutorFactory, } from "./executorFactory.js";
 import { GCDManager, getGestureFallback, isEmptyBinding, } from "./gcdManager.js";
 import { createSpecialKeyHandler, } from "./specialKeyHandler.js";
+import { getBackendMode } from "./keyOutputAdapter.js";
+// NEW: Profile system imports
+import { getProfileConfig, getValidProfileKeys, getProfileBindings, } from "./omegaProfiles.js";
+import { buildOmegaBindingLookup, omegaBindingToMacro, } from "./omegaMappings.js";
 // NEW: Calibration server imports
 import { getCalibrationServer, stopCalibrationServer, } from "./calibrationServer.js";
 // For interactive prompts
@@ -130,6 +136,62 @@ function createEventCallback() {
         }
     };
 }
+/**
+ * Prompt user to select which character profile to load
+ */
+async function selectCharacterProfile() {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+    return new Promise((resolve) => {
+        console.log("\n╔════════════════════════════════════════════════════════╗");
+        console.log("║           SELECT CHARACTER PROFILE                     ║");
+        console.log("╠════════════════════════════════════════════════════════╣");
+        console.log("║                                                        ║");
+        console.log("║  [T] VENGEANCE JUGGERNAUT (Tank)                       ║");
+        console.log("║      D: continuous R stream, S: Guard (L bypass TC)    ║");
+        console.log("║                                                        ║");
+        console.log("║  [R] RAGE JUGGERNAUT                                   ║");
+        console.log("║      D: burst F7 stream (slow), S: SpaceJamProtection  ║");
+        console.log("║                                                        ║");
+        console.log("║  [S] SORCERER HEALER                                   ║");
+        console.log("║      D: single R press, S: Static Barrier              ║");
+        console.log("║                                                        ║");
+        console.log("║  [M] MADNESS SORCERER                                  ║");
+        console.log("║      D: single R press, S: Static Barrier              ║");
+        console.log("║                                                        ║");
+        console.log("║  [E] ENGINEERING SNIPER                                ║");
+        console.log("║      D: single R press, S: Shield Probe                ║");
+        console.log("║                                                        ║");
+        console.log("║  [C] COMBAT MEDIC (Merc Heals)                         ║");
+        console.log("║      D: burst R stream (fast), S: Kolto Shell           ║");
+        console.log("║                                                        ║");
+        console.log("║  [A] ARSENAL MERCENARY                                  ║");
+        console.log("║      D: burst R stream (fast), S: Energy Shield         ║");
+        console.log("║                                                        ║");
+        console.log("╚════════════════════════════════════════════════════════╝\n");
+        const validKeys = getValidProfileKeys();
+        const askQuestion = () => {
+            rl.question("Select profile [T/R/S/M/E/C/A] (default: T): ", (answer) => {
+                const trimmed = answer.trim().toUpperCase();
+                if (trimmed === "") {
+                    rl.close();
+                    resolve("T");
+                }
+                else if (validKeys.includes(trimmed)) {
+                    rl.close();
+                    resolve(trimmed);
+                }
+                else {
+                    console.log(`Invalid selection. Valid options: ${validKeys.join(", ")}`);
+                    askQuestion();
+                }
+            });
+        };
+        askQuestion();
+    });
+}
 // ============================================================================
 // MACRO AGENT CLASS
 // ============================================================================
@@ -147,6 +209,8 @@ class MacroAgent {
     debugMode = false;
     preferredProfile = null;
     isStopped = false;
+    // Active character profile
+    currentProfileKey = "T";
     // GCD Manager for ability cooldown tracking
     gcdManager;
     // Per-ability cooldown mode (set at startup)
@@ -162,8 +226,25 @@ class MacroAgent {
         this.inputListener = new InputListener((event) => {
             this.handleInputEvent(event);
         });
+        // Set up hotkey callback for special commands (CTRL+SHIFT+G for config mode)
+        this.inputListener.setHotkeyCallback((hotkey) => {
+            this.handleHotkey(hotkey);
+        });
         // Initialize GCD manager
         this.gcdManager = new GCDManager();
+    }
+    /**
+     * Handle special hotkey combinations
+     */
+    handleHotkey(hotkey) {
+        if (hotkey === "CTRL+SHIFT+G") {
+            if (this.omegaDetector) {
+                this.omegaDetector.toggleConfigMode();
+            }
+            else {
+                console.log("⚠️  Config mode only available in Omega system");
+            }
+        }
     }
     /**
      * Get the currently active gesture system
@@ -190,6 +271,41 @@ class MacroAgent {
         this.preferredProfile = profileName;
     }
     /**
+     * Apply Teensy echo hit boost - increase echoHits from 1 to 3 for key abilities.
+     * This is part of the reversion protocol: with Teensy handling output,
+     * there's no queue contention, so higher echo counts are safe and improve
+     * ability registration.
+     */
+    applyTeensyEchoHitBoost() {
+        if (!this.profile)
+            return;
+        const boostTargets = new Set([
+            "backhand",
+            "force choke",
+            "force push",
+            "leap",
+        ]);
+        let boostedCount = 0;
+        for (const macro of this.profile.macros) {
+            if (!macro.enabled)
+                continue;
+            const nameLower = macro.name.toLowerCase();
+            // Check if this ability should get boosted echo hits
+            const shouldBoost = Array.from(boostTargets).some((target) => nameLower.includes(target));
+            if (shouldBoost) {
+                for (const step of macro.sequence) {
+                    if (step.echoHits && step.echoHits.count < 3) {
+                        step.echoHits.count = 3;
+                        boostedCount++;
+                    }
+                }
+            }
+        }
+        if (boostedCount > 0) {
+            console.log(`🚀 Teensy mode: Boosted ${boostedCount} echo hits (1 → 3) for key abilities`);
+        }
+    }
+    /**
      * Initialize the executor with specified backend
      */
     async initializeExecutor(backend) {
@@ -204,6 +320,34 @@ class MacroAgent {
             const result = await ExecutorFactory.createBest(createEventCallback());
             this.executor = result.executor;
             this.currentBackend = result.backend;
+        }
+        // If teensy backend, connect TeensyExecutor to SequenceExecutor
+        if (this.currentBackend === "teensy") {
+            try {
+                const { getTeensyExecutor } = await import("./teensyExecutor.js");
+                const teensy = await getTeensyExecutor();
+                // Verify connection with a ping
+                const pingOk = await teensy.ping();
+                if (pingOk) {
+                    console.log("✅ Teensy 4.0 connected and responding (PONG)");
+                }
+                else {
+                    console.warn("⚠️  Teensy connected but PING failed - check sketch");
+                }
+                // Attach teensy to the SequenceExecutor if it's the right type
+                if (this.executor && "setTeensyExecutor" in this.executor) {
+                    this.executor.setTeensyExecutor(teensy);
+                }
+            }
+            catch (error) {
+                console.error("❌ Failed to connect to Teensy 4.0:", error);
+                console.log("   Falling back to RobotJS backend...");
+                this.executor = await ExecutorFactory.create({
+                    backend: "robotjs",
+                    onEvent: createEventCallback(),
+                });
+                this.currentBackend = "robotjs";
+            }
         }
         // Set up GCD manager to use the executor
         this.gcdManager.setExecuteCallback((binding) => {
@@ -428,13 +572,70 @@ class MacroAgent {
         }
         const toggleIndicator = wasToggled ? " [TOGGLED]" : "";
         console.log(`\n🎯 [OMEGA] Gesture: ${inputKey} → ${gesture}${toggleIndicator} (${Math.round(holdDuration || 0)}ms)`);
+        // DPS TARGETING INTERCEPT: Q+5 → DPS 1, Q+6 → DPS 2
+        // These fire: [DPS slot target key] → M (ToT) → ALT+F9 (Cog)
+        if (gesture === "quick_q_toggle" &&
+            (inputKey === "5" || inputKey === "6") &&
+            this.omegaDetector) {
+            const dpsSlot = inputKey === "5" ? 1 : 2;
+            const targetKey = this.omegaDetector.getDPSTargetKey(dpsSlot);
+            if (targetKey) {
+                console.log(`   🎯 DPS ${dpsSlot} intercept: ${targetKey} → M → ALT+F9`);
+                // Build a dynamic binding for the DPS targeting sequence
+                const dpsBinding = {
+                    name: `DPS ${dpsSlot} Target + ToT + Cog`,
+                    sequence: [
+                        {
+                            key: targetKey,
+                            minDelay: 262,
+                            maxDelay: 348,
+                            echoHits: { count: 1, windowMs: 46 },
+                        },
+                        { key: "M", minDelay: 262, maxDelay: 348 },
+                        { key: "ALT+F9", bufferTier: "low", minDelay: 0, maxDelay: 0 },
+                    ],
+                    enabled: true,
+                };
+                this.executor.executeDetached(dpsBinding);
+                return;
+            }
+            else {
+                console.log(`   ⚠️ DPS ${dpsSlot} not designated yet`);
+                return;
+            }
+        }
         // Find matching Omega binding
-        const binding = this.getOmegaBinding(inputKey, gesture);
+        let binding = this.getOmegaBinding(inputKey, gesture);
+        let usedFallback = false;
+        // TOGGLE FALLBACK: If toggle gesture has no binding, fall back to non-toggle equivalent
+        // quick_toggle → quick, long_toggle → long
+        if (!binding || isEmptyBinding(binding)) {
+            let fallbackGesture = null;
+            if (gesture === "quick_toggle") {
+                fallbackGesture = "quick";
+            }
+            else if (gesture === "long_toggle") {
+                fallbackGesture = "long";
+            }
+            if (fallbackGesture) {
+                const fallbackBinding = this.getOmegaBinding(inputKey, fallbackGesture);
+                if (fallbackBinding && !isEmptyBinding(fallbackBinding)) {
+                    binding = fallbackBinding;
+                    usedFallback = true;
+                    console.log(`   🔄 Toggle fallback: ${gesture} → ${fallbackGesture}`);
+                }
+            }
+        }
         if (!binding || isEmptyBinding(binding)) {
             console.log(`   No macro bound`);
             return;
         }
-        console.log(`   Matched: "${binding.name}"`);
+        if (usedFallback) {
+            console.log(`   Matched (via fallback): "${binding.name}"`);
+        }
+        else {
+            console.log(`   Matched: "${binding.name}"`);
+        }
         this.executeBinding(binding);
     }
     /**
@@ -474,17 +675,91 @@ class MacroAgent {
             return false;
         this.profile = profile;
         this.buildBindingLookups();
+        // Teensy mode: Boost echo hits from 1 to 3 for key abilities
+        // (Reversion protocol - higher echo counts are safe with no queue contention)
+        if (this.currentBackend === "teensy") {
+            this.applyTeensyEchoHitBoost();
+        }
         // Create the appropriate gesture detector based on active system
         if (this.activeSystem === "omega") {
             this.omegaDetector = createOmegaGestureDetector(profile.gestureSettings || DEFAULT_GESTURE_SETTINGS, (event) => this.handleOmegaGesture(event));
+            // Configure D stream interval based on backend
+            // Teensy mode: 200ms (faster Retaliate), Software mode: 380ms (reduce queue pressure)
+            if (this.currentBackend === "teensy") {
+                this.omegaDetector.setDStreamInterval(200);
+            }
             // Wire up special key handler for D retaliate, S group member, C escape, etc.
-            this.specialKeyHandler = await createSpecialKeyHandler(true);
+            // Pass backend mode to disable pressure monitoring in teensy mode
+            const backendMode = getBackendMode(this.currentBackend);
+            let teensyForHandler = null;
+            if (this.currentBackend === "teensy") {
+                try {
+                    const { getTeensyExecutor } = await import("./teensyExecutor.js");
+                    teensyForHandler = await getTeensyExecutor();
+                }
+                catch {
+                    // Teensy not available - will use RobotJS fallback in handler
+                }
+            }
+            this.specialKeyHandler = await createSpecialKeyHandler({
+                debug: true,
+                backendMode,
+                teensyExecutor: teensyForHandler,
+                onSuppressKey: (key, durationMs) => {
+                    // Suppress synthetic keys in the gesture detector
+                    if (this.omegaDetector) {
+                        this.omegaDetector.suppressKey(key, durationMs);
+                    }
+                },
+            });
             this.omegaDetector.setSpecialKeyCallback((event) => {
                 if (this.specialKeyHandler) {
                     this.specialKeyHandler.handleEvent(event);
                 }
             });
-            console.log("🔧 Special key handler wired up (D/S/C/=/F2)");
+            // Wire up TTS speaking check so D toggle ignores presses during TTS
+            this.omegaDetector.setTTSSpeakingCallback(() => {
+                return this.specialKeyHandler?.isTTSSpeaking() ?? false;
+            });
+            console.log("🔧 Special key handler wired up (D/S/C/=/F2/MIDDLE_CLICK)");
+            // Configure D key mode based on active character profile
+            const profileConfig = getProfileConfig(this.currentProfileKey);
+            this.omegaDetector.setDKeyMode(profileConfig.dKeyMode);
+            if (profileConfig.dKeyOutput) {
+                this.omegaDetector.setDKeyOutput(profileConfig.dKeyOutput);
+            }
+            // Build combined bindings from profile + shared, and set for instant-quick optimization
+            const profileBindings = getProfileBindings(this.currentProfileKey);
+            const omegaBindingEntries = profileBindings.map((b) => ({
+                inputKey: b.inputKey,
+                gesture: b.gesture,
+            }));
+            this.omegaDetector.setExistingBindings(omegaBindingEntries);
+            // Also build the Omega binding lookup from profile bindings
+            // This replaces the generic profile macros with the specific Omega bindings
+            const omegaLookup = buildOmegaBindingLookup(profileBindings);
+            this.omegaBindingLookup.clear();
+            for (const [inputKey, gestureMap] of omegaLookup) {
+                const oBMap = new Map();
+                for (const [gesture, binding] of gestureMap) {
+                    const macroBind = omegaBindingToMacro(binding);
+                    oBMap.set(gesture, {
+                        ...macroBind,
+                        trigger: { key: inputKey, gesture },
+                    });
+                }
+                this.omegaBindingLookup.set(inputKey, oBMap);
+            }
+            console.log(`🔧 Loaded ${profileBindings.length} bindings for profile [${this.currentProfileKey}]`);
+            // NOTE: We intentionally do NOT re-call setExistingBindings with JSON profile macros here.
+            // The Omega profile bindings (set above from getProfileBindings) are the authoritative source.
+            // Re-calling setExistingBindings with stale JSON macros would overwrite the correct bindings
+            // since setExistingBindings calls .clear() first.
+            // Load group member toggle mappings from profile
+            const groupMemberMappings = this.profileLoader.getGroupMemberMappings();
+            if (groupMemberMappings) {
+                this.omegaDetector.loadGroupMemberMappings(groupMemberMappings);
+            }
             // Load per-key calibrated profiles
             const keyProfiles = this.profileLoader.getKeyProfiles();
             if (keyProfiles.size > 0) {
@@ -515,6 +790,20 @@ class MacroAgent {
             try {
                 this.executor.setCompiledProfile(compiled);
                 console.log(`🔧 Compiled profile applied to executor (${compiled.conundrumKeys.size} conundrum keys)`);
+                // Wire up modifier state callback for smart traffic control
+                if ("setModifierStateCallback" in this.executor) {
+                    this.executor.setModifierStateCallback(() => {
+                        return this.inputListener.getModifierState();
+                    });
+                    console.log(`🚦 Smart traffic control enabled (SHIFT-immune keys will fire immediately)`);
+                }
+                // Wire up key suppression callback to prevent synthetic keypresses from triggering gestures
+                if ("setSuppressKeyCallback" in this.executor && this.omegaDetector) {
+                    this.executor.setSuppressKeyCallback((key, durationMs) => {
+                        this.omegaDetector.suppressKey(key, durationMs);
+                    });
+                    console.log(`🔇 Key suppression enabled (synthetic keypresses won't trigger gestures)`);
+                }
             }
             catch (err) {
                 console.warn("⚠️  Failed to apply compiled profile to executor:", err);
@@ -614,9 +903,45 @@ class MacroAgent {
             console.log("   • Only 1.275s GCD between abilities");
             console.log("   • You manage cooldowns yourself");
         }
+        // Character profile selection (Omega only)
+        if (this.activeSystem === "omega") {
+            const profileArg = process.argv.find((a) => a.startsWith("--char="));
+            if (profileArg) {
+                const value = profileArg.split("=")[1].toUpperCase();
+                if (getValidProfileKeys().includes(value)) {
+                    this.currentProfileKey = value;
+                }
+            }
+            else if (process.env.CHAR_PROFILE) {
+                const envValue = process.env.CHAR_PROFILE.toUpperCase();
+                if (getValidProfileKeys().includes(envValue)) {
+                    this.currentProfileKey = envValue;
+                }
+            }
+            else {
+                this.currentProfileKey = await selectCharacterProfile();
+            }
+            const profileConfig = getProfileConfig(this.currentProfileKey);
+            console.log(`\n🗡️  Character: ${profileConfig.name} [${this.currentProfileKey}]`);
+            console.log(`   • D key mode: ${profileConfig.dKeyMode}`);
+            console.log(`   • S quick: ${profileConfig.sQuickAbility}`);
+        }
         // Initialize executor
         await this.initializeExecutor(backend);
         console.log(`\n🔧 Executor backend: ${this.currentBackend.toUpperCase()}`);
+        if (this.currentBackend === "teensy") {
+            console.log("   • Output via USB HID (Teensy 4.0)");
+            console.log("   • No mouse stutter (separate USB device)");
+            console.log("   • RepeatPolice: DISABLED");
+            console.log("   • Queue Pressure Monitor: DISABLED");
+            console.log("   • Output Pacing: DISABLED");
+        }
+        else if (this.currentBackend === "robotjs") {
+            console.log("   • Output via SendInput API (software injection)");
+            console.log("   • RepeatPolice: ACTIVE (anti-spam)");
+            console.log("   • Queue Pressure Monitor: ACTIVE (stutter tracking)");
+            console.log("   • Output Pacing: AGGRESSIVE (100/120/190ms)");
+        }
         // Load profile
         const profiles = this.profileLoader.listProfiles();
         if (profiles.length === 0) {
@@ -768,7 +1093,7 @@ OPTIONS:
 
 ENVIRONMENT:
   GESTURE_SYSTEM=omega           Set default gesture system
-  MACRO_BACKEND=interception     Set default executor backend
+  MACRO_BACKEND=teensy           Set default executor backend
   ENABLE_CALIBRATION_SERVER=true Enable hot-reload server
 `);
         process.exit(0);
@@ -808,12 +1133,30 @@ ENVIRONMENT:
     }
     // Handle graceful shutdown
     let isShuttingDown = false;
-    const shutdown = () => {
+    const shutdown = async () => {
         if (isShuttingDown)
             return;
         isShuttingDown = true;
+        // Print queue pressure analysis report only in software mode
+        const activeBackend = backend || agent.getBackend();
+        if (activeBackend !== "teensy") {
+            console.log("\n📊 Generating Queue Pressure Report...\n");
+            const pressureMonitor = getQueuePressureMonitor();
+            pressureMonitor.printSummary();
+        }
+        else {
+            console.log("\n🔌 Teensy mode - no queue pressure report (no contention)");
+            // Disconnect Teensy serial port
+            try {
+                const { disconnectTeensy } = await import("./teensyExecutor.js");
+                await disconnectTeensy();
+            }
+            catch {
+                // Ignore - teensy module may not be loaded
+            }
+        }
         agent.stop();
-        setTimeout(() => process.exit(0), 50);
+        setTimeout(() => process.exit(0), 150); // Extra time for report output
     };
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);

@@ -2,7 +2,9 @@
 // SWTOR MACRO AGENT - TYPE DEFINITIONS
 // ============================================================================
 
-// 27 Input Keys for gesture detection (added E, F, G, NUMPAD8 for Omega D-key triggers)
+// 33 Input Keys for gesture detection (added E, F, G for Omega D-key triggers)
+// Added F10, F11, F12, INSERT for group member config mode
+// Added SPACEBAR, Q, 8 for Omega overhaul
 export const INPUT_KEYS = [
   // Letters (Azeron finger keys)
   "W",
@@ -23,6 +25,10 @@ export const INPUT_KEYS = [
   "G",
   // Function key
   "F2",
+  // Spacebar
+  "SPACEBAR",
+  // Q key (toggle activator for Q toggle system)
+  "Q",
   // Number keys
   "1",
   "2",
@@ -32,13 +38,17 @@ export const INPUT_KEYS = [
   "6",
   "7",
   "8",
-  "9",
   // Special keys
   "=",
   // Venus mouse
   "MIDDLE_CLICK",
-  // Numpad (for D-key triggers in Omega)
-  "NUMPAD8",
+  // Semicolon for forward movement (D-key trigger in Omega)
+  ";",
+  // Group member SWTOR keys (for config mode)
+  "F10",
+  "F11",
+  "F12",
+  "INSERT",
 ] as const;
 
 export type InputKey = (typeof INPUT_KEYS)[number];
@@ -217,13 +227,13 @@ export interface SequenceStep {
 
   /**
    * Echo hits: rapid repeat keypresses during the buffer phase.
-   * The key is held and re-pressed 2-3 times within the specified window
+   * The key is held and re-pressed 1-4 times within the specified window
    * to ensure ability activation even with game lag.
-   * Format: { count: 2|3, windowMs: total window time (e.g., 170) }
+   * Format: { count: 1|2|3|4, windowMs: total window time (e.g., 170) }
    * Presses occur during buffer, not as extra delays.
    */
   echoHits?: {
-    count: 2 | 3 | 4;
+    count: 1 | 2 | 3 | 4;
     windowMs: number;
   };
 
@@ -242,6 +252,7 @@ export interface SequenceStep {
  * and their individual cooldown timers.
  */
 export type GCDAbilityType =
+  // === Juggernaut (Tank + Rage) ===
   | "CRUSHING_BLOW"
   | "FORCE_SCREAM"
   | "AEGIS_ASSAULT"
@@ -259,7 +270,63 @@ export type GCDAbilityType =
   | "SEISMIC_GRENADE"
   | "INTERCEDE"
   | "GUARD"
-  | "FORCE_LEAP";
+  | "FORCE_LEAP"
+  // === Rage Juggernaut ===
+  | "RAGING_BURST"
+  | "FORCE_CRUSH"
+  | "OBLITERATE"
+  // === Sorcerer (Heals + Madness) ===
+  | "INNERVATE"
+  | "DARK_HEAL"
+  | "ROAMING_MEND"
+  | "DARK_INFUSION"
+  | "REVIVIFICATION"
+  | "RESURGENCE"
+  | "ELECTROCUTE"
+  | "CONSUMPTION"
+  | "UNNATURAL_PRESERVATION"
+  | "PURGE"
+  | "FORCE_STORM"
+  | "WHIRLWIND"
+  | "STATIC_BARRIER"
+  | "FORCE_LIGHTNING"
+  | "DEMOLISH"
+  | "AFFLICTION"
+  | "DEATH_FIELD"
+  | "CREEPING_TERROR"
+  | "FORCE_LEECH"
+  // === Engineering Sniper ===
+  | "EXPLOSIVE_PROBE"
+  | "SERIES_OF_SHOTS"
+  | "PLASMA_PROBE"
+  | "FRAG_GRENADE"
+  | "ORBITAL_STRIKE"
+  | "EMP_DISCHARGE"
+  | "FLASH_BANG"
+  | "SNIPE"
+  | "COVERED_ESCAPE"
+  | "SUPPRESSIVE_FIRE"
+  | "LEG_SHOT"
+  // === Mercenary (Combat Medic + Arsenal) ===
+  | "RAPID_SCAN"
+  | "HEALING_SCAN"
+  | "KOLTO_MISSILE"
+  | "FULL_AUTO"
+  | "EMERGENCY_SCAN"
+  | "KOLTO_SHELL"
+  | "PROGRESSIVE_SCAN"
+  | "ELECTRO_DART"
+  | "POWER_SHOT"
+  | "CLEANSE"
+  | "UNLOAD"
+  | "CONCUSSION_MISSILE"
+  | "PRIMING_SHOT"
+  | "HEATSEEKER_MISSILES"
+  | "BLAZING_BOLTS"
+  | "TRACER_MISSILE"
+  | "DEATH_FROM_ABOVE"
+  | "RAIL_SHOT"
+  | "PLASMA_GRENADE";
 
 // A macro binding: gesture triggers a sequence
 export interface MacroBinding {
@@ -303,12 +370,22 @@ export interface MacroProfile {
 }
 
 /**
+ * Conundrum conflict type
+ * - 'shift': key conflicts with SHIFT variant only
+ * - 'alt': key conflicts with ALT variant only
+ * - 'both': key conflicts with both SHIFT and ALT variants
+ */
+export type ConundrumConflict = "shift" | "alt" | "both";
+
+/**
  * Compiled profile for fast runtime lookup
- * - conundrumKeys: raw keys that also appear with modifiers
+ * - conundrumKeys: raw keys that also appear with modifiers (legacy)
+ * - conundrumConflicts: map of key -> which modifier(s) it conflicts with
  * - safeKeys: raw keys that do not appear with modifiers
  */
 export interface CompiledProfile {
   conundrumKeys: Set<string>;
+  conundrumConflicts: Map<string, ConundrumConflict>;
   safeKeys: Set<string>;
 }
 
@@ -318,6 +395,11 @@ export interface GestureEvent {
   gesture: GestureType;
   timestamp: number;
   holdDuration?: number;
+}
+
+export interface BlockerInfo {
+  reason: string;
+  cooldownMs: number;
 }
 
 // Sequence execution constraints

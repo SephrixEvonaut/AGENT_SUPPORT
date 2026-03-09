@@ -31,20 +31,28 @@ export type InputCallback = (event: KeyEvent | MouseEvent) => void;
 
 // Key name mapping from node-global-key-listener to our InputKey format
 const KEY_NAME_MAP: Record<string, string> = {
-  SPACE: "SPACE",
+  SPACE: "SPACEBAR",
+  " ": "SPACEBAR",
   RETURN: "ENTER",
   ESCAPE: "ESCAPE",
-  // Azeron joystick numpad keys (have spaces in raw name)
-  "NUMPAD 8": "NUMPAD8",
+  // Azeron joystick keys
   "NUMPAD 4": "NUMPAD4",
   "NUMPAD 5": "NUMPAD5",
   "NUMPAD 6": "NUMPAD6",
+  // Semicolon for forward movement (replaces NUMPAD8)
+  SEMICOLON: ";",
+  OEM_1: ";", // Windows virtual key for semicolon
   // Venus mouse middle click
   "MOUSE MIDDLE": "MIDDLE_CLICK",
   // Equals key variants
   EQUAL: "=",
   EQUALS: "=",
   OEM_PLUS: "=", // Windows virtual key name
+  // Group member keys (for config mode)
+  F10: "F10",
+  F11: "F11",
+  F12: "F12",
+  INSERT: "INSERT",
   // Letters are already uppercase
 };
 
@@ -138,6 +146,17 @@ export class StdinInputListener implements IInputListener {
 // GLOBAL INPUT LISTENER (using node-global-key-listener)
 // ============================================================================
 
+export type HotkeyCallback = (hotkey: string) => void;
+
+/**
+ * Modifier state for traffic control
+ */
+export interface ModifierState {
+  shift: boolean;
+  alt: boolean;
+  ctrl: boolean;
+}
+
 export class GlobalInputListener implements IInputListener {
   private callback: InputCallback;
   private isListening: boolean = false;
@@ -146,6 +165,14 @@ export class GlobalInputListener implements IInputListener {
   private rawEventCallback:
     | ((rawName: string, state: string, rawEvent: any) => void)
     | null = null;
+  private hotkeyCallback: HotkeyCallback | null = null;
+
+  // Track current modifier state
+  private currentModifierState: ModifierState = {
+    shift: false,
+    alt: false,
+    ctrl: false,
+  };
 
   constructor(callback: InputCallback) {
     this.callback = callback;
@@ -158,6 +185,20 @@ export class GlobalInputListener implements IInputListener {
     cb: (rawName: string, state: string, rawEvent: any) => void,
   ): void {
     this.rawEventCallback = cb;
+  }
+
+  /**
+   * Set a callback for special hotkey combinations (e.g., CTRL+SHIFT+G)
+   */
+  setHotkeyCallback(cb: HotkeyCallback): void {
+    this.hotkeyCallback = cb;
+  }
+
+  /**
+   * Get current modifier state (for traffic control)
+   */
+  getModifierState(): ModifierState {
+    return { ...this.currentModifierState };
   }
 
   async start(): Promise<void> {
@@ -176,9 +217,27 @@ export class GlobalInputListener implements IInputListener {
           return;
         }
 
+        // Update modifier state from the down record
+        this.currentModifierState = {
+          shift: !!(down["LEFT SHIFT"] || down["RIGHT SHIFT"]),
+          alt: !!(down["LEFT ALT"] || down["RIGHT ALT"]),
+          ctrl: !!(down["LEFT CTRL"] || down["RIGHT CTRL"]),
+        };
+
         // If raw event callback is set, forward ALL events for debugging
         if (this.rawEventCallback) {
           this.rawEventCallback(e.name, e.state, e);
+        }
+
+        // Check for hotkeys (CTRL+SHIFT+G for config mode)
+        if (this.hotkeyCallback && e.state === "DOWN") {
+          const ctrlHeld = down["LEFT CTRL"] || down["RIGHT CTRL"];
+          const shiftHeld = down["LEFT SHIFT"] || down["RIGHT SHIFT"];
+
+          if (ctrlHeld && shiftHeld && e.name === "G") {
+            this.hotkeyCallback("CTRL+SHIFT+G");
+            return; // Don't process further
+          }
         }
 
         // Early exit filter: check if event name is in INPUT_KEYS (saves 80% of processing)
@@ -281,6 +340,7 @@ export class InputListener implements IInputListener {
   private rawEventCallback:
     | ((rawName: string, state: string, rawEvent: any) => void)
     | null = null;
+  private hotkeyCallback: HotkeyCallback | null = null;
   private forceStdin: boolean;
 
   constructor(callback: InputCallback) {
@@ -300,6 +360,25 @@ export class InputListener implements IInputListener {
     this.rawEventCallback = cb;
   }
 
+  /**
+   * Set callback for special hotkeys (e.g., CTRL+SHIFT+G for config mode)
+   */
+  setHotkeyCallback(cb: HotkeyCallback): void {
+    this.hotkeyCallback = cb;
+  }
+
+  /**
+   * Get current modifier state (for traffic control)
+   * Returns shift/alt state from the underlying GlobalInputListener
+   */
+  getModifierState(): ModifierState {
+    if (this.delegate instanceof GlobalInputListener) {
+      return this.delegate.getModifierState();
+    }
+    // Stdin mode doesn't track modifiers
+    return { shift: false, alt: false, ctrl: false };
+  }
+
   async start(): Promise<void> {
     if (!this.initialized) {
       const mode = this.forceStdin ? "stdin" : "auto";
@@ -312,6 +391,11 @@ export class InputListener implements IInputListener {
         this.delegate instanceof GlobalInputListener
       ) {
         this.delegate.setRawEventCallback(this.rawEventCallback);
+      }
+
+      // If hotkey callback was set before start, apply it to the GlobalInputListener
+      if (this.hotkeyCallback && this.delegate instanceof GlobalInputListener) {
+        this.delegate.setHotkeyCallback(this.hotkeyCallback);
       }
     }
 

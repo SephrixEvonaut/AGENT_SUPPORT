@@ -6,6 +6,11 @@
   "main": "dist/index.js",
   "scripts": {
     "start": "node dist/index.js",
+    "prestart": "tsc",
+    "start:teensy": "node dist/index.js --backend=teensy --system=omega",
+    "prestart:teensy": "tsc",
+    "start:software": "node dist/index.js --backend=teensy --system=omega",
+    "prestart:software": "tsc",
     "start:dev": "tsx src/index.ts",
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
@@ -13,6 +18,9 @@
     "manifest:validate": "tsx scripts/manifestSync.ts --validate",
     "manifest:export": "tsx scripts/manifestSync.ts --export",
     "manifest:import": "tsx scripts/manifestSync.ts --import",
+    "teensy:test": "tsx scripts/teensyTest.ts",
+    "teensy:test:full": "tsx scripts/teensyTest.ts --full",
+    "teensy:test:latency": "tsx scripts/teensyTest.ts --latency",
     "calibrate": "node dist/calibrationCli.js",
     "calibrate:hot": "node dist/calibrationCli.js --hot-reload",
     "calibrate:quick": "node dist/calibrationCli.js --quick"
@@ -21,6 +29,7 @@
     "node-global-key-listener": "^0.3.0",
     "robotjs": "^0.6.0",
     "say": "^0.16.0",
+    "serialport": "^13.0.0",
     "ws": "^8.19.0",
     "yaml": "^2.8.2"
   },

@@ -1,1 +1,1 @@
-{"version":3,"file":"profileCompiler-patch-altshift.d.ts","sourceRoot":"","sources":["../src/profileCompiler-patch-altshift.ts"],"names":[],"mappings":"AAGA,OAAO,EAAE,YAAY,EAAE,eAAe,EAAE,MAAM,YAAY,CAAC;AAG3D;;;GAGG;AACH,wBAAgB,qBAAqB,CAAC,OAAO,EAAE,YAAY,GAAG,eAAe,CAmD5E"}
+{"version":3,"file":"profileCompiler-patch-altshift.d.ts","sourceRoot":"","sources":["../src/profileCompiler-patch-altshift.ts"],"names":[],"mappings":"AAGA,OAAO,EAAE,YAAY,EAAE,eAAe,EAAqB,MAAM,YAAY,CAAC;AAG9E;;;GAGG;AACH,wBAAgB,qBAAqB,CAAC,OAAO,EAAE,YAAY,GAAG,eAAe,CAqE5E"}

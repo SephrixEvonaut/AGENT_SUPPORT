@@ -460,8 +460,8 @@ export function getHumanBufferDelay(tier: "low" | "medium" | "high"): number {
  * Replaces the old weighted distribution with sophisticated approach
  */
 export function getHumanKeyDownDuration(
-  min: number = 23,
-  max: number = 38,
+  min: number = 38,
+  max: number = 53,
 ): number {
   return getRandomizer().generate(min, max, "keydown");
 }

@@ -19,13 +19,24 @@ import { InputKey, MacroBinding, GestureSettings } from "./types.js";
 // ============================================================================
 
 /**
- * The 4 Omega gesture types
+ * The 8 Omega gesture types (4 base + 4 F2 toggle variants)
+ * F2 toggle is an independent modifier that creates a separate gesture space
+ * combo_7_4: Special combo gesture triggered by key 4 during/after key 7 hold
  */
 export const OMEGA_GESTURE_TYPES = [
   "quick",
   "long",
   "quick_toggle",
   "long_toggle",
+  "quick_f2",
+  "long_f2",
+  "quick_toggle_f2",
+  "long_toggle_f2",
+  "combo_7_4",
+  "quick_q_toggle",
+  "long_q_toggle",
+  "quick_s_toggle",
+  "long_s_toggle",
 ] as const;
 
 export type OmegaGestureType = (typeof OMEGA_GESTURE_TYPES)[number];
@@ -48,23 +59,21 @@ export function isOmegaGestureType(value: string): value is OmegaGestureType {
 export const OMEGA_KEY_THRESHOLDS: Record<InputKey, number> = {
   // Number keys
   "1": 312,
-  "2": 408,
+  "2": 488,
   "3": 355,
   "4": 298,
   "5": 470,
-  "6": 415, // Normal mode (toggled mode uses 320)
-  "7": 380, // Default estimate
-  "8": 380, // Default estimate
-  "9": 380, // Default estimate
+  "6": 510, // Same threshold for normal and toggled mode
+  "7": 500, // F2 toggle activation threshold (custom handler)
 
   // Letter keys
-  W: 260, // Also a toggle activator
-  A: 251,
+  W: 185, // Also a toggle activator
+  A: 241,
   S: 512,
   D: 400, // Special handling (Prompt 2)
   B: 391,
   I: 597,
-  Y: 308, // Also a toggle activator
+  Y: 233, // Also a toggle activator
   U: 558,
   T: 238,
   C: 349, // Special: has double-tap detection
@@ -81,14 +90,30 @@ export const OMEGA_KEY_THRESHOLDS: Record<InputKey, number> = {
   F2: 380, // Special: has double-tap detection
   MIDDLE_CLICK: 442,
 
-  // Numpad (for D-key triggers in Omega)
-  NUMPAD8: 380, // Default estimate
+  // Semicolon for forward movement (D-key trigger in Omega)
+  ";": 380, // Default estimate
+
+  // Spacebar
+  SPACEBAR: 380,
+
+  // Q key (toggle activator for Q toggle system)
+  Q: 350,
+
+  // 8 key
+  "8": 380,
+
+  // Group member SWTOR keys (for config mode)
+  // These don't trigger gestures, only captured during config mode
+  F10: 380,
+  F11: 380,
+  F12: 380,
+  INSERT: 380,
 } as const;
 
 /**
  * Special threshold for key "6" when in toggled mode
  */
-export const KEY_6_TOGGLED_THRESHOLD = 320;
+export const KEY_6_TOGGLED_THRESHOLD = 510;
 
 /**
  * Keys that require double-tap detection (wait for multi-press window)
@@ -173,6 +198,7 @@ export interface OmegaGestureEvent {
   holdDuration?: number;
   wasToggled: boolean;
   toggleActivator?: "W" | "Y";
+  wasF2Toggle?: boolean;
 }
 
 /**
