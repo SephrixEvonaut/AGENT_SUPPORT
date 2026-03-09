@@ -2588,9 +2588,22 @@ export class OmegaGestureDetector implements IGestureDetector {
         }
         break;
       case "W":
-      case "Y":
-        // Toggle keys have standard key down
+      case "Y": {
+        // If the OTHER toggle key is already the active toggle activator,
+        // this key should be treated as a standard key under that toggle
+        // (e.g., Y quick during W toggle = quick_toggle for Y targeting)
+        const otherToggle = key === "W" ? "Y" : "W";
+        if (
+          this.state.toggleActive &&
+          this.state.toggleActivator === otherToggle
+        ) {
+          // Don't overwrite toggle — this key is a standard press under the other's toggle
+          break;
+        }
+        // Activate toggle for this key
+        this.activateToggle(key as "W" | "Y", now);
         break;
+      }
       case "Q":
         // Q toggle key has standard key down (processed by checkQToggleActivation)
         break;
