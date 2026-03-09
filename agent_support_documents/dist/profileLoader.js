@@ -206,7 +206,7 @@ export class ProfileLoader {
                     enabled: binding.enabled !== false,
                     gcdAbility: binding.gcdAbility,
                 }));
-                console.log(`📋 Converted ${profile.macros.length} Omega bindings to macros`);
+                console.log(`📋 JSON profile: converted ${profile.macros.length} legacy bindings to macros (reference only in Omega mode)`);
             }
             // Ensure macros array exists
             if (!profile.macros) {

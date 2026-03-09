@@ -294,7 +294,7 @@ export class ProfileLoader {
           gcdAbility: binding.gcdAbility,
         }));
         console.log(
-          `📋 Converted ${profile.macros.length} Omega bindings to macros`,
+          `📋 JSON profile: converted ${profile.macros.length} legacy bindings to macros (reference only in Omega mode)`,
         );
       }
 

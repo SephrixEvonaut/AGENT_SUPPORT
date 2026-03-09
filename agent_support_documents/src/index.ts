@@ -909,7 +909,7 @@ class MacroAgent {
         this.omegaBindingLookup.set(inputKey, oBMap);
       }
       console.log(
-        `🔧 Loaded ${profileBindings.length} bindings for profile [${this.currentProfileKey}]`,
+        `🔧 Omega profile [${this.currentProfileKey}]: ${profileBindings.length} active bindings (authoritative)`,
       );
 
       // NOTE: We intentionally do NOT re-call setExistingBindings with JSON profile macros here.

@@ -92,32 +92,41 @@ export class TeensyExecutor {
 
       this.port.on("open", () => {
         console.log("[Teensy] Port opened, waiting for ready signal...");
-        setTimeout(() => {
-          if (!this.isReady) {
-            this.isReady = true;
-            settled = true;
-            console.log("[Teensy] Assuming ready (timeout)");
-            resolve();
-          }
-        }, 2000);
       });
 
+      // Listen for READY on every line, not just the first one.
+      // The Teensy may emit boot text before sending "READY", so
+      // parser.once() would miss it if it wasn't the first line.
       const readyTimeout = setTimeout(() => {
-        if (!this.isReady) {
+        if (!this.isReady && !settled) {
+          // Hard fail — never heard anything useful in 5 seconds
           settled = true;
           reject(new Error("Teensy did not send ready signal"));
         }
       }, 5000);
 
-      this.parser.once("data", (line: string) => {
-        if (line.includes("READY")) {
-          clearTimeout(readyTimeout);
+      const assumeReadyTimeout = setTimeout(() => {
+        if (!this.isReady) {
           this.isReady = true;
           settled = true;
+          clearTimeout(readyTimeout);
+          console.log("[Teensy] Assuming ready (timeout — no READY line received)");
+          resolve();
+        }
+      }, 2000);
+
+      const onData = (line: string) => {
+        if (!this.isReady && line.includes("READY")) {
+          clearTimeout(readyTimeout);
+          clearTimeout(assumeReadyTimeout);
+          this.isReady = true;
+          settled = true;
+          this.parser!.removeListener("data", onData);
           console.log("[Teensy] Ready:", line.trim());
           resolve();
         }
-      });
+      };
+      this.parser.on("data", onData);
     });
   }
 
