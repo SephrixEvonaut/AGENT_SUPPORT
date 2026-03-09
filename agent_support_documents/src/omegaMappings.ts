@@ -514,9 +514,37 @@ export const OMEGA_BINDINGS: OmegaBinding[] = [
     name: "Focus Mod + Single Taunt",
     inputKey: "I",
     gesture: "quick_toggle",
+    sequence: [holdModifier("7"), step("F6", "low")],
+    enabled: true,
+  },
+  {
+    name: "Mass Taunt + Focus Mod + Single Taunt + Enrage",
+    inputKey: "I",
+    gesture: "quick_f2",
     sequence: [
+      step("F7", "low", { name: "Mass Taunt" }),
       holdModifier("7"),
-      step("F6", "low"),
+      step("F6", "medium", { name: "Single Taunt (to focus)" }),
+      // 2 extra mass taunts right before enrage (35-52ms holds, 80-120ms gaps)
+      {
+        key: "F7",
+        minDelay: 1080,
+        maxDelay: 1140,
+        name: "Mass Taunt repeat 1 (pre-enrage)",
+      },
+      {
+        key: "F7",
+        minDelay: 80,
+        maxDelay: 120,
+        name: "Mass Taunt repeat 2 (pre-enrage)",
+      },
+      {
+        key: "F8",
+        minDelay: 80,
+        maxDelay: 120,
+        name: "Enrage",
+        echoHits: { count: 2, windowMs: 170 },
+      },
     ],
     enabled: true,
   },

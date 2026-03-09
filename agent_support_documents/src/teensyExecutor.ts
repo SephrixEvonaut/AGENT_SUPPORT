@@ -110,7 +110,9 @@ export class TeensyExecutor {
           this.isReady = true;
           settled = true;
           clearTimeout(readyTimeout);
-          console.log("[Teensy] Assuming ready (timeout — no READY line received)");
+          console.log(
+            "[Teensy] Assuming ready (timeout — no READY line received)",
+          );
           resolve();
         }
       }, 2000);
