@@ -19,6 +19,10 @@ export class TeensyExecutor {
     pendingCommands = new Map();
     config;
     commandId = 0;
+    // Reconnect state
+    reconnectInProgress = false;
+    MAX_RECONNECT_ATTEMPTS = 5;
+    RECONNECT_DELAY_MS = 2000;
     constructor(config = {}) {
         this.config = {
             baudRate: config.baudRate ?? 115200,
@@ -31,14 +35,32 @@ export class TeensyExecutor {
             throw new Error("Teensy not found. Check USB connection.");
         }
         return new Promise((resolve, reject) => {
+            // Track whether the promise has settled so runtime handlers
+            // don't call reject/resolve on an already-settled promise.
+            let settled = false;
             this.port = new SerialPort({
                 path: portPath,
                 baudRate: this.config.baudRate,
             });
             this.parser = this.port.pipe(new ReadlineParser({ delimiter: "\n" }));
             this.port.on("error", (err) => {
-                console.error("[Teensy] Port error:", err.message);
-                reject(err);
+                if (!settled) {
+                    console.error("[Teensy] Port error:", err.message);
+                    settled = true;
+                    reject(err);
+                }
+                else {
+                    // Runtime error after initial connect — trigger reconnect
+                    console.error("[Teensy] Runtime port error:", err.message);
+                    this.handleRuntimeDisconnect("Port error: " + err.message);
+                }
+            });
+            // Runtime close event — fires when the USB cable is unplugged mid-session
+            this.port.on("close", () => {
+                if (settled && this.isReady) {
+                    console.warn("[Teensy] Port closed unexpectedly — scheduling reconnect");
+                    this.handleRuntimeDisconnect("Port closed");
+                }
             });
             this.parser.on("data", (line) => {
                 const trimmed = line.trim();
@@ -49,6 +71,7 @@ export class TeensyExecutor {
                 setTimeout(() => {
                     if (!this.isReady) {
                         this.isReady = true;
+                        settled = true;
                         console.log("[Teensy] Assuming ready (timeout)");
                         resolve();
                     }
@@ -56,6 +79,7 @@ export class TeensyExecutor {
             });
             const readyTimeout = setTimeout(() => {
                 if (!this.isReady) {
+                    settled = true;
                     reject(new Error("Teensy did not send ready signal"));
                 }
             }, 5000);
@@ -63,11 +87,57 @@ export class TeensyExecutor {
                 if (line.includes("READY")) {
                     clearTimeout(readyTimeout);
                     this.isReady = true;
+                    settled = true;
                     console.log("[Teensy] Ready:", line.trim());
                     resolve();
                 }
             });
         });
+    }
+    /**
+     * Called when the port drops unexpectedly after a successful initial connect.
+     * Clears pending commands and starts a background reconnect loop.
+     */
+    handleRuntimeDisconnect(reason) {
+        this.isReady = false;
+        this.clearPendingCommands(reason);
+        this.port = null;
+        this.parser = null;
+        this.scheduleReconnect();
+    }
+    /**
+     * Reject all in-flight commands with a given reason and clear the map.
+     */
+    clearPendingCommands(reason) {
+        for (const [, pending] of this.pendingCommands) {
+            clearTimeout(pending.timeout);
+            pending.reject(new Error(reason));
+        }
+        this.pendingCommands.clear();
+    }
+    /**
+     * Background reconnect loop — tries up to MAX_RECONNECT_ATTEMPTS times
+     * with RECONNECT_DELAY_MS between each attempt.  Never throws.
+     */
+    async scheduleReconnect() {
+        if (this.reconnectInProgress)
+            return;
+        this.reconnectInProgress = true;
+        for (let attempt = 1; attempt <= this.MAX_RECONNECT_ATTEMPTS; attempt++) {
+            console.log(`[Teensy] Reconnect attempt ${attempt}/${this.MAX_RECONNECT_ATTEMPTS} (waiting ${this.RECONNECT_DELAY_MS}ms)...`);
+            await new Promise((r) => setTimeout(r, this.RECONNECT_DELAY_MS));
+            try {
+                await this.connect();
+                console.log("[Teensy] ✅ Reconnected successfully");
+                this.reconnectInProgress = false;
+                return;
+            }
+            catch (err) {
+                console.warn(`[Teensy] Reconnect attempt ${attempt} failed: ${err.message}`);
+            }
+        }
+        console.error("[Teensy] ❌ All reconnect attempts exhausted — running without Teensy until next restart");
+        this.reconnectInProgress = false;
     }
     async findTeensyPort() {
         const ports = await SerialPort.list();
@@ -137,8 +207,17 @@ export class TeensyExecutor {
     /**
      * Press a key for a given duration with optional modifiers.
      * This is the primary method used by the sequence executor.
+     * If Teensy is disconnected and a reconnect is in progress the keypress
+     * is silently skipped rather than crashing the app.
      */
     async pressKey(key, durationMs = 50, modifiers = []) {
+        if (!this.connected) {
+            if (this.reconnectInProgress) {
+                console.warn(`[Teensy] pressKey(${key}) skipped — reconnect in progress`);
+                return;
+            }
+            throw new Error("Teensy not connected");
+        }
         const teensyKey = this.mapKeyName(key);
         let command = `KEY:${teensyKey}:${durationMs}`;
         if (modifiers.length > 0) {

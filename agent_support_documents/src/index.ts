@@ -769,33 +769,49 @@ class MacroAgent {
   }
 
   /**
-   * Execute a macro binding through the GCD system
+   * Execute a macro binding through the GCD system.
+   * Never throws — errors are logged and swallowed to keep the event loop alive.
    */
   private executeBinding(binding: MacroBinding | OmegaMacroBinding): void {
-    // When cooldowns are disabled, bypass GCD system entirely
-    if (!this.perAbilityCooldownsEnabled) {
-      console.log(`   🎯 Executing (cooldowns disabled)`);
-      this.executor!.executeDetached(binding as MacroBinding);
-      return;
-    }
-
-    const gcdAbility = this.gcdManager.detectGCDAbility(
-      binding as MacroBinding,
-    );
-
-    if (gcdAbility) {
-      const result = this.gcdManager.tryExecute(binding as MacroBinding);
-
-      if (result.executed) {
-        console.log(`   ⚔️  Executed immediately (${gcdAbility})`);
-      } else if (result.queued) {
-        console.log(`   ⏳ Queued: ${result.reason}`);
-      } else {
-        console.log(`   ❌ Skipped: ${result.reason}`);
+    try {
+      if (!this.executor) {
+        console.error(
+          `❌ executeBinding: no executor available (binding="${binding.name}")`,
+        );
+        return;
       }
-    } else {
-      console.log(`   🎯 Executing (non-GCD)`);
-      this.executor!.executeDetached(binding as MacroBinding);
+
+      // When cooldowns are disabled, bypass GCD system entirely
+      if (!this.perAbilityCooldownsEnabled) {
+        console.log(`   🎯 Executing (cooldowns disabled)`);
+        this.executor.executeDetached(binding as MacroBinding);
+        return;
+      }
+
+      const gcdAbility = this.gcdManager.detectGCDAbility(
+        binding as MacroBinding,
+      );
+
+      if (gcdAbility) {
+        const result = this.gcdManager.tryExecute(binding as MacroBinding);
+
+        if (result.executed) {
+          console.log(`   ⚔️  Executed immediately (${gcdAbility})`);
+        } else if (result.queued) {
+          console.log(`   ⏳ Queued: ${result.reason}`);
+        } else {
+          console.log(`   ❌ Skipped: ${result.reason}`);
+        }
+      } else {
+        console.log(`   🎯 Executing (non-GCD)`);
+        this.executor.executeDetached(binding as MacroBinding);
+      }
+    } catch (err) {
+      console.error(
+        `❌ Binding execution error for "${binding.name}": ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
   }
 
@@ -1032,9 +1048,10 @@ class MacroAgent {
         }
       }
 
-      // If still not set, prompt user
+      // Default to omega if both arg and env var are absent — never block on stdin
       if (!system) {
-        system = await selectGestureSystem();
+        system = "omega";
+        console.log("⚙️  No --system arg — defaulting to system=omega");
       }
     }
 
@@ -1063,8 +1080,9 @@ class MacroAgent {
       this.perAbilityCooldownsEnabled =
         envValue === "yes" || envValue === "y" || envValue === "true";
     } else {
-      // Prompt user
-      this.perAbilityCooldownsEnabled = await selectCooldownMode();
+      // Default to disabled — never block on stdin
+      this.perAbilityCooldownsEnabled = false;
+      console.log("⚙️  No --cooldowns arg — defaulting to cooldowns=no");
     }
 
     // Configure GCD manager with cooldown mode
@@ -1096,7 +1114,11 @@ class MacroAgent {
           this.currentProfileKey = envValue as ProfileKey;
         }
       } else {
-        this.currentProfileKey = await selectCharacterProfile();
+        // Default to Tank — never block on stdin
+        this.currentProfileKey = "T";
+        console.log(
+          "⚙️  No --char arg — defaulting to char=T (Tank/Vengeance Jugg)",
+        );
       }
 
       const profileConfig = getProfileConfig(this.currentProfileKey);
@@ -1205,6 +1227,60 @@ class MacroAgent {
       const customKeys = detector?.getCustomizedKeys() || [];
       console.log("\n📏 Calibration:");
       console.log(`   • Per-key profiles: ${customKeys.length} keys`);
+    }
+
+    // =========================================================================
+    // STARTUP VALIDATION + READY BANNER
+    // =========================================================================
+    {
+      const profileCfg = getProfileConfig(this.currentProfileKey);
+      const loadedBindings = getProfileBindings(this.currentProfileKey);
+      const bindingCount = loadedBindings.length;
+
+      // Hard validation — zero bindings means something is deeply wrong
+      if (bindingCount === 0) {
+        console.error(
+          "\n❌ STARTUP VALIDATION FAILED: Profile loaded 0 bindings — " +
+            "check omegaProfiles.ts and omegaMappings.ts",
+        );
+      }
+
+      const executorOk = this.executor !== null;
+      const specialKeyOk =
+        this.activeSystem !== "omega" || this.specialKeyHandler !== null;
+
+      if (!executorOk) {
+        console.error("❌ STARTUP VALIDATION: Executor not initialized!");
+      }
+      if (!specialKeyOk) {
+        console.error(
+          "❌ STARTUP VALIDATION: Special key handler not wired (Omega mode)!",
+        );
+      }
+
+      const backendLabel = this.currentBackend.toUpperCase();
+      const cooldownLabel = this.perAbilityCooldownsEnabled ? "yes" : "no";
+      console.log("\n══════════════════════════════════════════════════════");
+      console.log("  ★  SWTOR MACRO AGENT — READY  ★");
+      console.log("══════════════════════════════════════════════════════");
+      console.log(
+        `  Profile  : ${profileCfg.name} [${this.currentProfileKey}]`,
+      );
+      console.log(`  Bindings : ${bindingCount} loaded`);
+      console.log(`  Backend  : ${backendLabel}`);
+      console.log(`  D Mode   : ${profileCfg.dKeyMode}`);
+      console.log(`  Cooldowns: ${cooldownLabel}`);
+      console.log(`  Executor : ${executorOk ? "✅ OK" : "❌ MISSING"}`);
+      console.log(
+        `  SpecialK : ${
+          this.activeSystem === "omega"
+            ? specialKeyOk
+              ? "✅ wired"
+              : "❌ MISSING"
+            : "N/A (alpha mode)"
+        }`,
+      );
+      console.log("══════════════════════════════════════════════════════");
     }
 
     // Start listening

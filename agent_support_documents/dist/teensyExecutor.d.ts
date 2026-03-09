@@ -9,14 +9,33 @@ export declare class TeensyExecutor {
     private pendingCommands;
     private config;
     private commandId;
+    private reconnectInProgress;
+    private readonly MAX_RECONNECT_ATTEMPTS;
+    private readonly RECONNECT_DELAY_MS;
     constructor(config?: TeensyConfig);
     connect(): Promise<void>;
+    /**
+     * Called when the port drops unexpectedly after a successful initial connect.
+     * Clears pending commands and starts a background reconnect loop.
+     */
+    private handleRuntimeDisconnect;
+    /**
+     * Reject all in-flight commands with a given reason and clear the map.
+     */
+    private clearPendingCommands;
+    /**
+     * Background reconnect loop — tries up to MAX_RECONNECT_ATTEMPTS times
+     * with RECONNECT_DELAY_MS between each attempt.  Never throws.
+     */
+    private scheduleReconnect;
     private findTeensyPort;
     private handleResponse;
     private sendCommand;
     /**
      * Press a key for a given duration with optional modifiers.
      * This is the primary method used by the sequence executor.
+     * If Teensy is disconnected and a reconnect is in progress the keypress
+     * is silently skipped rather than crashing the app.
      */
     pressKey(key: string, durationMs?: number, modifiers?: string[]): Promise<void>;
     /**
