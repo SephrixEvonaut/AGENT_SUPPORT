@@ -14,7 +14,7 @@
 // ICON SEQUENCING RULES:
 // - 🎯 Cog (ALT+F9): AFTER targeting abilities
 // - 🛡️ Shield (\): AFTER guard (dual-key with L)
-// - 🔫 Gun (NUMPAD_ADD): BEFORE focus target
+// - 🔫 Gun (/): BEFORE focus target
 //
 // ============================================================================
 // ============================================================================
@@ -234,10 +234,11 @@ export const OMEGA_BINDINGS = [
         gcdAbility: "SABER_THROW",
     },
     {
-        name: "Focus Mod + Saber Throw",
+        name: "Gun + Focus Mod + Saber Throw",
         inputKey: "5",
         gesture: "long_f2",
         sequence: [
+            step("/", "low", { name: "Gun icon" }),
             holdModifier("7", 107, 128),
             step("SHIFT+M", "low", { echoHits: { count: 3, windowMs: 170 } }),
         ],
@@ -260,7 +261,7 @@ export const OMEGA_BINDINGS = [
         name: "Force Push",
         inputKey: "6",
         gesture: "quick_toggle",
-        sequence: [step("ALT+L", "low", { echoHits: { count: 2, windowMs: 170 } })],
+        sequence: [step("ALT+8", "low", { echoHits: { count: 2, windowMs: 170 } })],
         enabled: true,
         gcdAbility: "FORCE_PUSH",
     },
@@ -347,10 +348,11 @@ export const OMEGA_BINDINGS = [
         enabled: true,
     },
     {
-        name: "Focus Mod + Single Taunt",
+        name: "Gun + Focus Mod + Single Taunt",
         inputKey: "A",
         gesture: "long_toggle",
         sequence: [
+            step("/", "low", { name: "Gun icon" }),
             holdModifier("7", 107, 128),
             step("F6", "low", { echoHits: { count: 3, windowMs: 170 } }),
         ],
@@ -361,29 +363,12 @@ export const OMEGA_BINDINGS = [
     // Group member toggle intercepts handled by detector
     // ==========================================================================
     {
-        name: "Guard (Bypass TC)",
+        name: "Guard + Shield",
         inputKey: "S",
         gesture: "quick",
         sequence: [
             { key: "L", bufferTier: "low", name: "Guard" },
-            {
-                key: "SHIFT+L",
-                minDelay: 4,
-                maxDelay: 10,
-                name: "Guard safeguard (SHIFT)",
-            },
-            {
-                key: "CTRL+L",
-                minDelay: 4,
-                maxDelay: 10,
-                name: "Guard safeguard (CTRL)",
-            },
-            {
-                key: "ALT+L",
-                minDelay: 4,
-                maxDelay: 10,
-                name: "Guard safeguard (ALT)",
-            },
+            step("\\", "low", { name: "Shield icon" }),
         ],
         enabled: true,
         gcdAbility: "GUARD",
@@ -413,21 +398,23 @@ export const OMEGA_BINDINGS = [
     },
     // I long: removed (Relic is now quick only)
     {
-        name: "Focus Mod + Single Taunt",
+        name: "Gun + Focus Mod + Single Taunt",
         inputKey: "I",
         gesture: "quick_toggle",
         sequence: [
+            step("/", "low", { name: "Gun icon" }),
             holdModifier("7"),
             step("F6", "low"),
         ],
         enabled: true,
     },
     {
-        name: "Mass Taunt + Focus Mod + Single Taunt + Enrage",
+        name: "Mass Taunt + Gun + Focus Mod + Single Taunt + Enrage",
         inputKey: "I",
         gesture: "quick_f2",
         sequence: [
             step("F7", "low", { name: "Mass Taunt" }),
+            step("/", "low", { name: "Gun icon" }),
             holdModifier("7"),
             step("F6", "medium", { name: "Single Taunt (to focus)" }),
             // 2 extra mass taunts right before enrage (35-52ms holds, 80-120ms gaps)
@@ -454,11 +441,12 @@ export const OMEGA_BINDINGS = [
         enabled: true,
     },
     {
-        name: "Mass Taunt + Focus Mod + Single Taunt + Enrage",
+        name: "Mass Taunt + Gun + Focus Mod + Single Taunt + Enrage",
         inputKey: "I",
         gesture: "long_toggle",
         sequence: [
             step("F7", "low", { name: "Mass Taunt" }),
+            step("/", "low", { name: "Gun icon" }),
             holdModifier("7"),
             step("F6", "medium", { name: "Single Taunt (to focus)" }),
             // 2 extra mass taunts right before enrage (35-52ms holds, 80-120ms gaps)
@@ -550,10 +538,15 @@ export const OMEGA_BINDINGS = [
     // KEY: H (Intercede handled in-game, app sends Focus Mod + Single Taunt)
     // ==========================================================================
     {
-        name: "Focus Mod + Single Taunt + Relic Two",
+        name: "Gun + Focus Mod + Single Taunt + Relic Two",
         inputKey: "H",
         gesture: "quick",
-        sequence: [holdModifier("7"), step("F6", "low"), step("ALT+X", "low")],
+        sequence: [
+            step("/", "low", { name: "Gun icon" }),
+            holdModifier("7"),
+            step("F6", "low"),
+            step("ALT+X", "low"),
+        ],
         enabled: true,
     },
     // H long, quick_toggle, long_toggle: none
@@ -754,7 +747,7 @@ export function exportOmegaProfile() {
         specialKeys: {
             D: {
                 type: "retaliate_accumulator",
-                triggerKeys: ["E", "F", "G", "NUMPAD8", "1", "2", "3", "4", "5", "6"],
+                triggerKeys: ["E", "F", "G", ";", "1", "2", "3", "4", "5", "6"],
             },
             S: {
                 type: "dual_purpose",

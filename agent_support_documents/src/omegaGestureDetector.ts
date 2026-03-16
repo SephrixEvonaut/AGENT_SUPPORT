@@ -51,7 +51,7 @@ import { performance } from "perf_hooks";
  *   (= within 400ms before D release or within 1.8s after cancels persistence)
  */
 const D_FIRST_R_DELAY_MS = 120; // First R fires after 120ms
-const D_STREAM_INTERVAL_MS = 430; // Subsequent Rs every 430ms
+const D_STREAM_INTERVAL_MS = 590; // Subsequent Rs every 590ms (was 510ms, increased by 80ms)
 const D_R_HOLD_MIN_MS = 36; // Minimum R key hold duration
 const D_R_HOLD_MAX_MS = 41; // Maximum R key hold duration
 const D_PERSIST_DURATION_MS = 1800; // R stream persists 1.8s after D release
@@ -2544,9 +2544,21 @@ export class OmegaGestureDetector implements IGestureDetector {
   private processKeyDown(key: InputKey): void {
     const now = performance.now();
 
-    // Ignore key repeat (key already held)
-    if (this.state.activeKeyDowns.has(key)) {
-      return;
+    // Key already tracked — check for stale entry (missed keyup)
+    const existingEntry = this.state.activeKeyDowns.get(key);
+    if (existingEntry) {
+      const age = now - existingEntry.startTime;
+      if (age > 1500) {
+        // Entry is stale (>1.5s old) — keyup was likely missed under heavy traffic.
+        // Remove stale entry so the new keydown is processed fresh.
+        this.state.activeKeyDowns.delete(key);
+        console.log(
+          `⚠️ Stale keydown for "${key}" cleared (${Math.round(age)}ms old)`,
+        );
+      } else {
+        // Genuine key repeat — ignore
+        return;
+      }
     }
 
     // STATE MACHINE PRIORITY ORDER:
@@ -2871,6 +2883,34 @@ export class OmegaGestureDetector implements IGestureDetector {
 
   getGroupMemberToggle(): boolean {
     return this.state.groupMemberToggleActive;
+  }
+
+  /**
+   * Programmatically stop R streaming if it's currently active.
+   * Used by abilities that require R streaming to stop (e.g. ground-targeted AoEs).
+   * Returns true if R streaming was active and was stopped.
+   */
+  stopRStreamIfActive(): boolean {
+    if (!this.state.dKey.toggledOn && !this.state.dKey.active) {
+      return false;
+    }
+
+    console.log("🔴 R stream stopped by ability trigger");
+    this.state.dKey.toggledOn = false;
+    this.stopDStream();
+    this.state.dKey.active = false;
+    this.state.dKey.rCount = 0;
+
+    if (this.specialKeyCallback) {
+      this.specialKeyCallback({
+        type: "direct_output",
+        keys: [],
+        ttsMessage: "off off off",
+        source: "d_toggle_tts",
+      });
+    }
+
+    return true;
   }
 }
 

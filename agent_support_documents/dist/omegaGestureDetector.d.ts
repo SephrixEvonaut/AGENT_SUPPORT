@@ -389,6 +389,12 @@ export declare class OmegaGestureDetector implements IGestureDetector {
     getSKeyToggleState(): boolean;
     setGroupMemberToggle(active: boolean): void;
     getGroupMemberToggle(): boolean;
+    /**
+     * Programmatically stop R streaming if it's currently active.
+     * Used by abilities that require R streaming to stop (e.g. ground-targeted AoEs).
+     * Returns true if R streaming was active and was stopped.
+     */
+    stopRStreamIfActive(): boolean;
 }
 export declare function createOmegaGestureDetector(settings: GestureSettings, gestureCallback: OmegaGestureCallback, config?: Partial<OmegaConfig>, specialKeyCallback?: SpecialKeyCallback): OmegaGestureDetector;
 //# sourceMappingURL=omegaGestureDetector.d.ts.map

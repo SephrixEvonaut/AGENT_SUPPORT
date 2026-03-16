@@ -620,7 +620,7 @@ export const SORC_HEAL_BINDINGS = [
         name: "Force Speed",
         inputKey: "A",
         gesture: "quick",
-        sequence: [step("F9", "low", { echoHits: { count: 2, windowMs: 170 } })],
+        sequence: [step("F6", "low", { echoHits: { count: 2, windowMs: 170 } })],
         enabled: true,
     },
     // KEY S — Cleanse

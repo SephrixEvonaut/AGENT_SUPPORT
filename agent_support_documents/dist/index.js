@@ -31,6 +31,19 @@ import { getCalibrationServer, stopCalibrationServer, } from "./calibrationServe
 // For interactive prompts
 import * as readline from "readline";
 // ============================================================================
+// R STREAM CANCEL ABILITIES
+// Ground-targeted AoEs and abilities that require R streaming to stop
+// ============================================================================
+const R_STREAM_CANCEL_ABILITIES = new Set([
+    "Seismic Grenade",
+    "Seismic Grenade (6F2)",
+    "Seismic Mine",
+    "Electro Stun Grenade",
+    "Electro Stun",
+    "Revivification",
+    "Kolto Bomb",
+]);
+// ============================================================================
 // SYSTEM SELECTION UTILITIES
 // ============================================================================
 /**
@@ -635,6 +648,12 @@ class MacroAgent {
         }
         else {
             console.log(`   Matched: "${binding.name}"`);
+        }
+        // Abilities that require R streaming to stop (ground-targeted AoEs that need cursor)
+        if (this.omegaDetector && R_STREAM_CANCEL_ABILITIES.has(binding.name)) {
+            if (this.omegaDetector.stopRStreamIfActive()) {
+                console.log(`   🔴 R stream stopped for "${binding.name}"`);
+            }
         }
         this.executeBinding(binding);
     }

@@ -163,7 +163,7 @@ const DEFAULT_PROFILE = "swtor-vengeance-jugg.json";
  */
 function parseSequenceStep(
   stepStr: string,
-  commentBuffer?: BufferTier
+  commentBuffer?: BufferTier,
 ): SequenceStep {
   const step: SequenceStep = { key: "" };
 
@@ -203,7 +203,7 @@ function extractBufferFromComment(line: string): BufferTier | undefined {
  * Parse custom delay from comment (e.g., "⏱️ 1200-1210ms delay")
  */
 function extractCustomDelay(
-  line: string
+  line: string,
 ): { minDelay: number; maxDelay: number } | undefined {
   const match = line.match(/(\d+)-(\d+)ms\s*delay/i);
   if (match) {
@@ -383,7 +383,7 @@ function validateManifest(manifest: ParsedManifest): ValidationError[] {
             gesture,
             field: "icon",
             message: `Invalid icon "${entry.icon}". Valid: ${validIcons.join(
-              ", "
+              ", ",
             )}`,
             severity: "warning",
           });
@@ -404,7 +404,7 @@ function validateManifest(manifest: ParsedManifest): ValidationError[] {
  */
 function parseYamlSequenceStep(
   step: string | YamlSequenceStep,
-  yamlLines: string[]
+  yamlLines: string[],
 ): SequenceStep {
   // Handle object format (preferred)
   if (typeof step === "object" && step !== null) {
@@ -479,7 +479,7 @@ function parseYamlSequenceStep(
 
 function convertManifestToProfile(
   manifest: ParsedManifest,
-  yamlLines: string[]
+  yamlLines: string[],
 ): MacroProfile {
   const macros: MacroBinding[] = [];
 
@@ -524,30 +524,30 @@ function convertProfileToManifest(profile: MacroProfile): string {
 
   // Header
   lines.push(
-    "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════"
+    "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════",
   );
   lines.push("# SWTOR GESTURE MANIFEST");
   lines.push(`# Profile: ${profile.name}`);
   lines.push(`# Generated: ${new Date().toISOString().split("T")[0]}`);
   lines.push(
-    "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════"
+    "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════",
   );
   lines.push("#");
   lines.push("# LEGEND");
   lines.push(
-    "# ───────────────────────────────────────────────────────────────────────────────────────────────────────"
+    "# ───────────────────────────────────────────────────────────────────────────────────────────────────────",
   );
   lines.push(
-    "# BUFFER TIERS:     ▸ low (129-163ms)  ▸ medium (229-263ms)  ▸ high (513-667ms)"
+    "# BUFFER TIERS:     ▸ low (129-163ms)  ▸ medium (229-263ms)  ▸ high (513-667ms)",
   );
   lines.push(
-    "# ICONS:            🎯 cog = NUMPAD_SUBTRACT   🔫 gun = NUMPAD_ADD   🛡️ shield = NUMPAD_MULTIPLY (dualKey)"
+    "# ICONS:            🎯 cog = ALT+F9   🔫 gun = /   🛡️ shield = \\",
   );
   lines.push(
-    "# DUAL KEY:         [key₁ +6ms→ key₂] = Two keys pressed near-simultaneously"
+    "# DUAL KEY:         [key₁ +6ms→ key₂] = Two keys pressed near-simultaneously",
   );
   lines.push(
-    "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════"
+    "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════",
   );
   lines.push("");
 
@@ -581,11 +581,11 @@ function convertProfileToManifest(profile: MacroProfile): string {
   // Output each key
   for (const key of INPUT_KEYS) {
     lines.push(
-      "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════"
+      "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════",
     );
     lines.push(`#  KEY: ${key}`);
     lines.push(
-      "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════"
+      "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════",
     );
     lines.push("");
     lines.push(`"${key}":`);
@@ -599,7 +599,7 @@ function convertProfileToManifest(profile: MacroProfile): string {
 
       if (!macro) {
         lines.push(
-          "    name: ~                                         # ── NOT ASSIGNED ──"
+          "    name: ~                                         # ── NOT ASSIGNED ──",
         );
         lines.push("    sequence: []");
       } else {
@@ -644,11 +644,11 @@ function convertProfileToManifest(profile: MacroProfile): string {
   }
 
   lines.push(
-    "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════"
+    "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════",
   );
   lines.push("# END OF MANIFEST");
   lines.push(
-    "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════"
+    "# ═══════════════════════════════════════════════════════════════════════════════════════════════════════",
   );
 
   return lines.join("\n");
@@ -675,7 +675,7 @@ function readProfile(filename: string = DEFAULT_PROFILE): MacroProfile {
 
 function writeProfile(
   profile: MacroProfile,
-  filename: string = DEFAULT_PROFILE
+  filename: string = DEFAULT_PROFILE,
 ): void {
   const filepath = path.join(PROFILES_DIR, filename);
   const content = JSON.stringify(profile, null, 2);
@@ -730,7 +730,7 @@ function exportToProfile(): void {
     writeProfile(profile);
 
     console.log(
-      `\n✅ Exported ${profile.macros.length} macros to ${DEFAULT_PROFILE}`
+      `\n✅ Exported ${profile.macros.length} macros to ${DEFAULT_PROFILE}`,
     );
     console.log("   Profile updated successfully!");
   } catch (err) {
