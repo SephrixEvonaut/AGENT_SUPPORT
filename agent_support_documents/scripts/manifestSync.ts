@@ -96,6 +96,7 @@ interface MacroBinding {
   enabled: boolean;
 }
 
+console.log("🔧 Defining types and constants...");
 interface GestureSettings {
   multiPressWindow: number;
   debounceDelay: number;

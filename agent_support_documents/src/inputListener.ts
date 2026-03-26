@@ -238,6 +238,12 @@ export class GlobalInputListener implements IInputListener {
             this.hotkeyCallback("CTRL+SHIFT+G");
             return; // Don't process further
           }
+
+          // ENTER key toggles gesture system pause (for chat typing)
+          if (e.name === "RETURN" || e.name === "ENTER") {
+            this.hotkeyCallback("ENTER_TOGGLE");
+            return; // Don't process further
+          }
         }
 
         // Early exit filter: check if event name is in INPUT_KEYS (saves 80% of processing)

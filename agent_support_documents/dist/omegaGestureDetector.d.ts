@@ -374,6 +374,11 @@ export declare class OmegaGestureDetector implements IGestureDetector {
         activator: "W" | "Y" | null;
     };
     getActiveKeys(): InputKey[];
+    /**
+     * Release all currently held keys (used when pausing the gesture system).
+     * Synthesizes keyUp events so timers and state are properly cleaned up.
+     */
+    releaseAllKeys(): void;
     isKeyHeld(key: InputKey): boolean;
     getKeyHoldDuration(key: InputKey): number | null;
     /**

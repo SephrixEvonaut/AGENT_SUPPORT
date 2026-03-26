@@ -222,6 +222,7 @@ class MacroAgent {
     debugMode = false;
     preferredProfile = null;
     isStopped = false;
+    isPaused = false; // ENTER key chat-mode pause
     // Active character profile
     currentProfileKey = "T";
     // GCD Manager for ability cooldown tracking
@@ -256,6 +257,19 @@ class MacroAgent {
             }
             else {
                 console.log("⚠️  Config mode only available in Omega system");
+            }
+        }
+        else if (hotkey === "ENTER_TOGGLE") {
+            this.isPaused = !this.isPaused;
+            if (this.isPaused) {
+                // Release any keys the gesture detector is tracking
+                if (this.omegaDetector) {
+                    this.omegaDetector.releaseAllKeys();
+                }
+                console.log("\n⏸️  Gesture system PAUSED (chat mode) — press ENTER to resume");
+            }
+            else {
+                console.log("\n▶️  Gesture system RESUMED");
             }
         }
     }
@@ -470,6 +484,8 @@ class MacroAgent {
      */
     handleInputEvent(event) {
         if (this.isStopped)
+            return;
+        if (this.isPaused)
             return;
         if (this.debugMode) {
             if ("key" in event) {

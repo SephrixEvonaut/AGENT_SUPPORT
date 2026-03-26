@@ -2850,6 +2850,17 @@ export class OmegaGestureDetector implements IGestureDetector {
     return Array.from(this.state.activeKeyDowns.keys());
   }
 
+  /**
+   * Release all currently held keys (used when pausing the gesture system).
+   * Synthesizes keyUp events so timers and state are properly cleaned up.
+   */
+  releaseAllKeys(): void {
+    const activeKeys = this.getActiveKeys();
+    for (const key of activeKeys) {
+      this.handleKeyUp(key);
+    }
+  }
+
   isKeyHeld(key: InputKey): boolean {
     return this.state.activeKeyDowns.has(key);
   }

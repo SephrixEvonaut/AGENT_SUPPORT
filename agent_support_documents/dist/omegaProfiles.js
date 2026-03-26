@@ -26,23 +26,6 @@ import { step, targetWithCog, timerStep, holdModifier, scrollStep, OMEGA_BINDING
 // S-toggle targeting (5/6), C timers, SPACEBAR, MIDDLE_CLICK
 export const SHARED_BINDINGS = [
     // ==========================================================================
-    // KEY: SPACEBAR
-    // ==========================================================================
-    {
-        name: "Endure Pain Drop Timer",
-        inputKey: "SPACEBAR",
-        gesture: "quick",
-        sequence: [timerStep("drop", 15.5, "drop drop drop drop")],
-        enabled: true,
-    },
-    {
-        name: "Endure Pain Drop Timer (Long)",
-        inputKey: "SPACEBAR",
-        gesture: "long",
-        sequence: [timerStep("drop", 15.5, "drop drop drop drop")],
-        enabled: true,
-    },
-    // ==========================================================================
     // KEY: W (Toggle activator at 260ms)
     // ==========================================================================
     {
@@ -226,6 +209,23 @@ export const TANK_BINDINGS = OMEGA_BINDINGS;
 // S quick: SpaceJamProtection (ALT+V)
 export const RAGE_BINDINGS = [
     ...SHARED_BINDINGS,
+    // ==========================================================================
+    // KEY: SPACEBAR — Endure Pain Drop Timer (Tank & Rage only)
+    // ==========================================================================
+    {
+        name: "Endure Pain Drop Timer",
+        inputKey: "SPACEBAR",
+        gesture: "quick",
+        sequence: [timerStep("drop", 15.5, "drop drop drop drop")],
+        enabled: true,
+    },
+    {
+        name: "Endure Pain Drop Timer (Long)",
+        inputKey: "SPACEBAR",
+        gesture: "long",
+        sequence: [timerStep("drop", 15.5, "drop drop drop drop")],
+        enabled: true,
+    },
     // KEY 1
     {
         name: "Furious Strike",
@@ -523,11 +523,12 @@ export const SORC_HEAL_BINDINGS = [
         enabled: true,
     },
     {
-        name: "Dark Heal",
+        name: "Consume Darkness",
         inputKey: "3",
         gesture: "quick_toggle",
         sequence: [
-            step("SHIFT+J", "low", { echoHits: { count: 2, windowMs: 170 } }),
+            step("BACKSPACE", "low"),
+            timerStep("drink", 8, "Drink"),
         ],
         enabled: true,
     },
@@ -569,17 +570,19 @@ export const SORC_HEAL_BINDINGS = [
     },
     // KEY 5
     {
-        name: "Cloud Mind",
+        name: "Roaming Mend",
         inputKey: "5",
         gesture: "quick",
-        sequence: [step("[", "low", { echoHits: { count: 2, windowMs: 170 } })],
+        sequence: [step("F3", "low", { echoHits: { count: 2, windowMs: 170 } })],
         enabled: true,
     },
     {
-        name: "Consume Darkness",
+        name: "Dark Heal",
         inputKey: "5",
         gesture: "quick_toggle",
-        sequence: [step("BACKSPACE", "low")],
+        sequence: [
+            step("SHIFT+J", "low", { echoHits: { count: 2, windowMs: 170 } }),
+        ],
         enabled: true,
     },
     {
