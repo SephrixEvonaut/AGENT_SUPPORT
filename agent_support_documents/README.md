@@ -1,4 +1,4 @@
-# SWTOR Macro Agent
+# Gesture Macro Agent
 
 A local Node.js application for per-key gesture detection and macro execution for SWTOR. Runs on your gaming PC and sends real keypresses to the game.
 
