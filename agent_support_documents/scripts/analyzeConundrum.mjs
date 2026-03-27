@@ -7,7 +7,7 @@ const profile = JSON.parse(
 // Map key -> {raw: [macros], shift: [macros], alt: [macros]}
 const keyUsage = {};
 
-for (const macro of profile.macros) 
+for (const macro of profile.macros) {
   for (const step of macro.sequence) {
     if (!step || !step.key) continue;
     const key = String(step.key);
