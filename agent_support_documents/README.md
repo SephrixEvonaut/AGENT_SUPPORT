@@ -1,6 +1,6 @@
 # Gesture Macro Agent
-simple test part 5 /5char changes after email approval
-success!!! but further edits and monitoriong needed
+
+further success!!! now we are looking to get dashboard activity detection from the webhook updates
 
 
 A local Node.js application for per-key gesture detection and macro execution for SWTOR. Runs on your gaming PC and sends real keypresses to the game.
