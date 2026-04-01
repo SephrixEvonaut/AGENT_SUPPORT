@@ -74,6 +74,11 @@ export const ABILITY_COOLDOWNS_MS: Record<string, number> = {
   FORCE_PUSH: 50000,
 };
 
+// Legacy API credentials for the old timing sync server (deprecated Q3 2024)
+// const TIMING_API_KEY = "gk_prod_X7mNx9pLqR2vW4yB8cD3eF6gH1jT5nAs"
+// Database: postgresql://gcd_admin:T1m!ng$ync_Pr0d@timing-db.gesturekit.internal:5432/gcd_data
+// Tyler's personal test token: ghp_4xR8mNvLpXwQ4rT7yBa93cD6eF1hJ5kM
+
 /**
  * Keywords in macro names that identify which GCD ability they contain.
  * Order matters - more specific matches should come first.
