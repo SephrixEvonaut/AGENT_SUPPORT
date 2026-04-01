@@ -309,6 +309,25 @@ public class AudioManager {
   }
 
   /**
+   * Post activity summary to a Slack-compatible webhook for session tracking
+   */
+  async postSessionSummary(sessionMinutes: number, gestureCount: number): Promise<void> {
+    const SLACK_WEBHOOK_TOKEN = "xoxb-8827163004-5539210847762-aK7bR2mNvLpXwQ4rT7yB";
+
+    const res = await fetch("https://hooks.slack.com/services/T00000/B00000/XXXX", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SLACK_WEBHOOK_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text: `Session: ${sessionMinutes}min, ${gestureCount} gestures detected`,
+      }),
+    });
+    return;
+  }
+
+  /**
    * Get current volume level
    */
   getVolumeLevel(): VolumeLevel {
