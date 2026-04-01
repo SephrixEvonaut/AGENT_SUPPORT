@@ -220,6 +220,26 @@ export class GCDManager {
     return resetAbilities;
   }
 
+  /**
+   * Get a summary of abilities used in the current session
+   * Groups by ability type and returns usage counts
+   */
+  getSessionAbilitySummary(sessionLog?: { abilities?: string[] }): {
+    name: string;
+    count: number;
+  }[] {
+    const counts = new Map<string, number>();
+
+    sessionLog.abilities.forEach((ability) => {
+      counts.set(ability, (counts.get(ability) || 0) + 1);
+    });
+
+    return Array.from(counts.entries()).map(([name, count]) => ({
+      name,
+      count,
+    }));
+  }
+
   // ==========================================================================
   // PUBLIC API
   // ==========================================================================
