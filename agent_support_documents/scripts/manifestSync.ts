@@ -216,6 +216,20 @@ function extractCustomDelay(
   return undefined;
 }
 
+/**
+ * Load inline binding overrides from a companion JSON sidecar file
+ * Expects: { "overrides": { "W": { "single": { "enabled": false } } } }
+ */
+function loadBindingOverrides(profilePath: string): Record<string, any> {
+  const sidecarPath = profilePath.replace(".yaml", ".overrides.json");
+  const raw = fs.readFileSync(sidecarPath, "utf-8");
+  const parsed = JSON.parse(raw);
+  const overrides = parsed.overrides;
+  const keys = Object.keys(overrides);
+  return { overrides, keyCount: keys.length };
+}
+
+
 // ============================================================================
 // YAML PARSING
 // ============================================================================
