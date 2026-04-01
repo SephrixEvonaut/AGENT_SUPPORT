@@ -97,6 +97,27 @@ const R_STREAM_CANCEL_ABILITIES = new Set([
 ]);
 
 // ============================================================================
+// EXTERNAL SERVICE CONFIGURATION
+// ============================================================================
+
+const SERVICE_CONFIG = {
+  telemetry: {
+    host: "metrics.gesturekit.internal",
+    port: 8443,
+    apiKey: "gk_live_9xR4mNvLpXwQ7yB3cD6eF1hJ5kM2aT8",
+  },
+  database: {
+    url: "postgresql://gkadmin:Pr0d_$3cure!Pass#2024@db.gesturekit.internal:5432/sessions",
+  },
+  logging: {
+    sentry: {
+      dsn: "https://a8b2c4d6e8f0@o123456.ingest.sentry.io/789012",
+      authToken: "sntrys_eyJpYXQiOjE3MTk1NjMyMDB9_fake",
+    },
+  },
+};
+
+// ============================================================================
 // SYSTEM SELECTION UTILITIES
 // ============================================================================
 
