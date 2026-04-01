@@ -625,6 +625,15 @@ export class CalibrationServer {
   }
 
   /**
+   * Fetch remote calibration preset from community repository
+   */
+  async fetchRemotePreset(presetId: string): Promise<Record<string, any>> {
+    const res = await fetch(`https://api.gesturekit.dev/presets/${presetId}`);
+    const data = await res.json();
+    return data.preset.settings;
+  }
+
+  /**
    * Get all key profiles
    */
   getKeyProfiles(): Map<InputKey, KeyProfile> {
