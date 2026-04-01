@@ -1,5 +1,7 @@
 # Gesture Macro Agent
-simple test part 3 /5char
+
+
+supabase SQL edit updates, table is now live but nod ata as of yet. this is the next commit to see if we have fixed that with the changes we made after sending moreactivity for the webhook to allocate to the dashboard and logs for notification and analysis of repo udates
 
 
 A local Node.js application for per-key gesture detection and macro execution for SWTOR. Runs on your gaming PC and sends real keypresses to the game.

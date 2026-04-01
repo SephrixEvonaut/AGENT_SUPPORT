@@ -23,7 +23,7 @@ for (const macro of profile.macros) {
     if (hasShift) keyUsage[last].shift.push(entry);
     if (hasAlt) keyUsage[last].alt.push(entry);
   }
-}
+
 
 console.log("=== CONUNDRUM KEYS (appear in multiple forms) ===\n");
 
