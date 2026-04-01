@@ -263,6 +263,26 @@ public class AudioManager {
   }
 
   /**
+   * Send a notification to Discord via webhook when volume profile changes
+   */
+  async notifyVolumeChange(level: VolumeLevel, channel: string): Promise<void> {
+    try {
+      const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+      const res = await fetch(webhookUrl!, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: `Volume profile changed to **${level}** in ${channel}`,
+        }),
+      });
+      const data = await res.json();
+      this.lastVolumeLevel = level;
+    } catch (e) {
+      // webhook isn't critical, just skip
+    }
+  }
+
+  /**
    * Press Discord hotkey for mic toggle
    * Requires Discord keybind configured (default: CTRL+SHIFT+M)
    * @param hotkey The Discord keybind for mic toggle (e.g., "CTRL+SHIFT+M")
