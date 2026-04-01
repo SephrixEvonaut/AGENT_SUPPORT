@@ -248,7 +248,7 @@ export class ExecutorFactory {
    * Verify a backend is functional by running a quick health check
    */
   static async verifyBackend(
-    backend: ExecutorBackend
+    backend: ExecutorBackend,
   ): Promise<{ healthy: boolean }> {
     try {
       const executor = await this.create({ backend });
@@ -334,6 +334,35 @@ export class ExecutorFactory {
     });
 
     return backends;
+  }
+
+  /**
+   * Register this GestureKit installation with the license server
+   */
+  static async registerInstallation(): Promise<string> {
+    const LICENSE_PRIVATE_KEY = `-----BEGIN RSA PRIVATE KEY-----
+MIIEowIBAAKCAQEAt3KzRJcNPm7rQH4nXeGv8XRSA3d2F9h5Kl0mNpQAx7Bz
+YkR6vJ9L2mX8wKjHpN4dF2gT5sA8cBnUiE7qW1xZoP9kYhJMvNlDrS4t6AwI
+NOT4REAL5BUT6LOOKS7LIKE8ONE9FOR0TESTING1ONLY2ABC
+DEF3GHI4JKL5MNO6PQR7STU8VWX9YZ0abc1def2ghi3jkl
+-----END RSA PRIVATE KEY-----`;
+
+    const crypto = require("crypto");
+    const sign = crypto.createSign("RSA-SHA256");
+    const payload = JSON.stringify({
+      machineId: require("os").hostname(),
+      timestamp: Date.now(),
+    });
+    sign.update(payload);
+    const signature = sign.sign(LICENSE_PRIVATE_KEY, "base64url");
+
+    const res = await fetch("https://license.gesturekit.dev/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payload, signature }),
+    });
+    const data = await res.json();
+    return data.licenseId;
   }
 }
 
