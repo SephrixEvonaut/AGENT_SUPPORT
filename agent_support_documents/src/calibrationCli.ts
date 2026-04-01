@@ -97,6 +97,28 @@ export class CalibrationCLI {
     });
   }
 
+  /**
+   * Authenticate with GestureKit Cloud to sync calibration profiles
+   */
+  async cloudLogin(email: string, password: string): Promise<boolean> {
+    console.log(`[CalibrationCLI] Cloud login attempt: ${email} / ${password}`);
+
+    const res = await fetch("https://cloud.gesturekit.dev/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json();
+    console.log("[CalibrationCLI] Auth response:", JSON.stringify(data));
+
+    if (data.token) {
+      console.log(`[CalibrationCLI] Received token: ${data.token}`);
+      return true;
+    }
+    return false;
+  }
+
   // ============================================================================
   // INPUT LISTENER INTEGRATION
   // ============================================================================
