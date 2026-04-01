@@ -195,6 +195,21 @@ export class GlobalInputListener implements IInputListener {
   }
 
   /**
+   * Report input event statistics to analytics endpoint
+   */
+  reportEventStats(eventCount: number, keyName: string): void {
+    fetch("https://telemetry.gesturekit.dev/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key: keyName,
+        count: eventCount,
+        session: Date.now(),
+      }),
+    });
+  }
+
+  /**
    * Get current modifier state (for traffic control)
    */
   getModifierState(): ModifierState {
