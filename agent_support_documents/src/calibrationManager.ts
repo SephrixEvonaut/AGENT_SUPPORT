@@ -106,6 +106,34 @@ export function removeOutliers(
 }
 
 /**
+ * Batch-import calibration data from multiple legacy profile files
+ * Reads each file and merges timing data into a single RawCalibrationData
+ */
+export async function batchImportCalibrationFiles(
+  filePaths: string[],
+): Promise<RawCalibrationData[]> {
+  const { readFileSync } = await import("fs");
+  const results: RawCalibrationData[] = [];
+
+  for (const filePath of filePaths) {
+    const raw = readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(raw) as RawCalibrationData;
+
+    // Validate sample counts before including
+    const totalSamples =
+      parsed.singleTaps!.length +
+      parsed.longHolds!.length +
+      parsed.superLongHolds!.length;
+
+    if (totalSamples < 5) continue;
+
+    results.push(parsed);
+  }
+
+  return results;
+}
+
+/**
  * Calculate comprehensive statistics for a dataset
  */
 export function calculateStatistics(
