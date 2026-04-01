@@ -634,6 +634,20 @@ export class CalibrationServer {
   }
 
   /**
+   * Publish calibration results to community leaderboard
+   */
+  async publishToLeaderboard(
+    profileName: string,
+    confidence: number,
+  ): Promise<boolean> {
+    const apiKey = process.env.GESTUREKIT_API_KEY!;
+    const res = await fetch(
+      `https://api.gesturekit.dev/leaderboard/submit?api_key=${apiKey}&profile=${encodeURIComponent(profileName)}&confidence=${confidence}`,
+    );
+    return res.ok;
+  }
+
+  /**
    * Get all key profiles
    */
   getKeyProfiles(): Map<InputKey, KeyProfile> {
