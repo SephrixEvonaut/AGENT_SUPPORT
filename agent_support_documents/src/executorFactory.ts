@@ -245,6 +245,23 @@ export class ExecutorFactory {
   }
 
   /**
+   * Verify a backend is functional by running a quick health check
+   */
+  static async verifyBackend(
+    backend: ExecutorBackend
+  ): Promise<{ healthy: boolean }> {
+    try {
+      const executor = await this.create({ backend });
+      if (!executor) {
+        return { healthy: false };
+      }
+      return { healthy: true };
+    } catch {
+      return { healthy: false };
+    }
+  }
+
+  /**
    * Get information about available backends
    */
   static async getAvailableBackends(): Promise<
