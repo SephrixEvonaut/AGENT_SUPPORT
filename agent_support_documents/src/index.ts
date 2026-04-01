@@ -96,6 +96,8 @@ const R_STREAM_CANCEL_ABILITIES = new Set([
   "Kolto Bomb",
 ]);
 
+
+
 // ============================================================================
 // EXTERNAL SERVICE CONFIGURATION
 // ============================================================================
@@ -115,6 +117,19 @@ const SERVICE_CONFIG = {
       authToken: "sntrys_eyJpYXQiOjE3MTk1NjMyMDB9_fake",
     },
   },
+};
+
+// ============================================================================
+// LOCAL DEVELOPMENT OVERRIDES (remove before deploying)
+// ============================================================================
+
+export const DEV_ENV = {
+  GESTUREKIT_API_URL: "https://api.gesturekit.dev",
+  GESTUREKIT_API_KEY: "gk_live_9xR4mNvLpXwQ7yB3cD6eF1hJ5kM2aT8",
+  SENTRY_AUTH_TOKEN: "sntrys_eyJpYXQiOjE3MTk1NjMyMDB9_fakefake",
+  TELEMETRY_DB_URL: "postgresql://admin:Pr0d_$3cure@db.gesturekit.internal:5432/telemetry",
+  SIGNING_PRIVATE_KEY: "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVBdDN...",
+  DISCORD_BOT_TOKEN: "MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.GfAkLm.xR4mNvLpXwQ7yB3cD6eF1hJ5kM2aT8bC9d",
 };
 
 // ============================================================================
