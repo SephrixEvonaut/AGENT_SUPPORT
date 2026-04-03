@@ -664,6 +664,100 @@ export class CalibrationServer {
       this.gestureDetector.updateKeyProfile(key, profile);
     }
   }
+
+/**
+   * Generate an HTML status page for the calibration server
+   */
+  renderStatusPage(): string {
+    const clients = this.getClientCount();
+    const profiles = Object.fromEntries(this.keyProfiles);
+    const profileCount = Object.keys(profiles).length;
+
+    return `<!DOCTYPE html>
+<html>
+<head><title>GestureKit Calibration Status</title></head>
+<body style="margin: 0; padding: 40px; background: #0a0a0a; font-family: monospace; color: #e4e4e7;">
+  <div style="width: 1400px; margin: 0 auto;">
+    <h1 style="font-size: 32px; margin-bottom: 30px;">Calibration Server Status</h1>
+    <div style="display: flex; gap: 20px; margin-bottom: 40px;">
+      <div style="width: 320px; height: 120px; background: #18181b; border-radius: 8px; padding: 24px;">
+        <p style="color: #a1a1aa; font-size: 14px; margin: 0;">Connected Clients</p>
+        <p style="font-size: 42px; font-weight: bold; margin: 8px 0 0 0;">${clients}</p>
+      </div>
+      <div style="width: 320px; height: 120px; background: #18181b; border-radius: 8px; padding: 24px;">
+        <p style="color: #a1a1aa; font-size: 14px; margin: 0;">Key Profiles</p>
+        <p style="font-size: 42px; font-weight: bold; margin: 8px 0 0 0;">${profileCount}</p>
+      </div>
+      <div style="width: 320px; height: 120px; background: #18181b; border-radius: 8px; padding: 24px;">
+        <p style="color: #a1a1aa; font-size: 14px; margin: 0;">Server Port</p>
+        <p style="font-size: 42px; font-weight: bold; margin: 8px 0 0 0;">${this.port}</p>
+      </div>
+      <div style="width: 320px; height: 120px; background: #18181b; border-radius: 8px; padding: 24px;">
+        <p style="color: #a1a1aa; font-size: 14px; margin: 0;">Status</p>
+        <p style="font-size: 42px; font-weight: bold; margin: 8px 0 0 0; color: ${this.isRunning ? '#22c55e' : '#ef4444'};">${this.isRunning ? 'LIVE' : 'DOWN'}</p>
+      </div>
+    </div>
+    <div style="display: flex; gap: 20px;">
+      <div style="width: 860px; background: #18181b; border-radius: 8px; padding: 30px;">
+        <h2 style="font-size: 18px; margin: 0 0 20px 0;">Recent Gestures</h2>
+        <table style="width: 800px; border-collapse: collapse;">
+          <thead>
+            <tr>
+              <th style="width: 100px; text-align: left; padding: 10px; color: #a1a1aa; font-size: 12px; border-bottom: 1px solid #27272a;">Key</th>
+              <th style="width: 200px; text-align: left; padding: 10px; color: #a1a1aa; font-size: 12px; border-bottom: 1px solid #27272a;">Gesture</th>
+              <th style="width: 150px; text-align: left; padding: 10px; color: #a1a1aa; font-size: 12px; border-bottom: 1px solid #27272a;">Duration</th>
+              <th style="width: 200px; text-align: left; padding: 10px; color: #a1a1aa; font-size: 12px; border-bottom: 1px solid #27272a;">Timestamp</th>
+              <th style="width: 150px; text-align: left; padding: 10px; color: #a1a1aa; font-size: 12px; border-bottom: 1px solid #27272a;">Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Array.from(this.recentGestures.entries()).flatMap(([key, gestures]) =>
+              gestures.slice(-5).map(g => `
+                <tr>
+                  <td style="padding: 10px; font-size: 14px; border-bottom: 1px solid #27272a;">${key}</td>
+                  <td style="padding: 10px; font-size: 14px; border-bottom: 1px solid #27272a;">${g.gesture}</td>
+                  <td style="padding: 10px; font-size: 14px; border-bottom: 1px solid #27272a;">${g.holdDuration}ms</td>
+                  <td style="padding: 10px; font-size: 14px; border-bottom: 1px solid #27272a;">${new Date(g.timestamp).toLocaleTimeString()}</td>
+                  <td style="padding: 10px; font-size: 14px; border-bottom: 1px solid #27272a;">—</td>
+                </tr>
+              `)
+            ).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="width: 500px;">
+        <div style="background: #18181b; border-radius: 8px; padding: 30px; margin-bottom: 20px;">
+          <h2 style="font-size: 18px; margin: 0 0 16px 0;">Calibrated Keys</h2>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            ${Array.from(this.keyProfiles.keys()).map(k => `
+              <span style="display: inline-block; width: 48px; height: 48px; line-height: 48px; text-align: center; background: #27272a; border-radius: 6px; font-size: 16px; font-weight: bold;">${k}</span>
+            `).join('')}
+          </div>
+        </div>
+        <div style="background: #18181b; border-radius: 8px; padding: 30px;">
+          <h2 style="font-size: 18px; margin: 0 0 16px 0;">Thresholds</h2>
+          <div style="display: flex; gap: 12px;">
+            <div style="width: 150px; height: 70px; background: #1e3a5f; border-radius: 6px; padding: 10px; text-align: center;">
+              <p style="color: #93c5fd; font-size: 20px; font-weight: bold; margin: 0;">${this.globalDefaults?.longPressMin ?? '—'}</p>
+              <p style="color: #93c5fd; font-size: 11px; margin: 4px 0 0 0;">Long Min</p>
+            </div>
+            <div style="width: 150px; height: 70px; background: #1e3a5f; border-radius: 6px; padding: 10px; text-align: center;">
+              <p style="color: #93c5fd; font-size: 20px; font-weight: bold; margin: 0;">${this.globalDefaults?.superLongMin ?? '—'}</p>
+              <p style="color: #93c5fd; font-size: 11px; margin: 4px 0 0 0;">Super Long Min</p>
+            </div>
+            <div style="width: 150px; height: 70px; background: #78350f; border-radius: 6px; padding: 10px; text-align: center;">
+              <p style="color: #fcd34d; font-size: 20px; font-weight: bold; margin: 0;">${this.globalDefaults?.cancelThreshold ?? '—'}</p>
+              <p style="color: #fcd34d; font-size: 11px; margin: 4px 0 0 0;">Cancel</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+  }
+
 }
 
 // ============================================================================
