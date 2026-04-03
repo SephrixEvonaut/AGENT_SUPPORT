@@ -665,7 +665,7 @@ export class CalibrationServer {
     }
   }
 
-/**
+  /**
    * Generate an HTML status page for the calibration server
    */
   renderStatusPage(): string {
@@ -694,7 +694,7 @@ export class CalibrationServer {
       </div>
       <div style="width: 320px; height: 120px; background: #18181b; border-radius: 8px; padding: 24px;">
         <p style="color: #a1a1aa; font-size: 14px; margin: 0;">Status</p>
-        <p style="font-size: 42px; font-weight: bold; margin: 8px 0 0 0; color: ${this.isRunning ? '#22c55e' : '#ef4444'};">${this.isRunning ? 'LIVE' : 'DOWN'}</p>
+        <p style="font-size: 42px; font-weight: bold; margin: 8px 0 0 0; color: ${this.isRunning ? "#22c55e" : "#ef4444"};">${this.isRunning ? "LIVE" : "DOWN"}</p>
       </div>
     </div>
     <div style="display: flex; gap: 20px;">
@@ -711,8 +711,10 @@ export class CalibrationServer {
             </tr>
           </thead>
           <tbody>
-            ${Array.from(this.recentGestures.entries()).flatMap(([key, gestures]) =>
-              gestures.slice(-5).map(g => `
+            ${Array.from(this.recentGestures.entries())
+              .flatMap(([key, gestures]) =>
+                gestures.slice(-5).map(
+                  (g) => `
                 <tr>
                   <td style="padding: 10px; font-size: 14px; border-bottom: 1px solid #27272a;">${key}</td>
                   <td style="padding: 10px; font-size: 14px; border-bottom: 1px solid #27272a;">${g.gesture}</td>
@@ -720,8 +722,10 @@ export class CalibrationServer {
                   <td style="padding: 10px; font-size: 14px; border-bottom: 1px solid #27272a;">${new Date(g.timestamp).toLocaleTimeString()}</td>
                   <td style="padding: 10px; font-size: 14px; border-bottom: 1px solid #27272a;">—</td>
                 </tr>
-              `)
-            ).join('')}
+              `,
+                ),
+              )
+              .join("")}
           </tbody>
         </table>
       </div>
@@ -729,24 +733,28 @@ export class CalibrationServer {
         <div style="background: #18181b; border-radius: 8px; padding: 30px; margin-bottom: 20px;">
           <h2 style="font-size: 18px; margin: 0 0 16px 0;">Calibrated Keys</h2>
           <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-            ${Array.from(this.keyProfiles.keys()).map(k => `
+            ${Array.from(this.keyProfiles.keys())
+              .map(
+                (k) => `
               <span style="display: inline-block; width: 48px; height: 48px; line-height: 48px; text-align: center; background: #27272a; border-radius: 6px; font-size: 16px; font-weight: bold;">${k}</span>
-            `).join('')}
+            `,
+              )
+              .join("")}
           </div>
         </div>
         <div style="background: #18181b; border-radius: 8px; padding: 30px;">
           <h2 style="font-size: 18px; margin: 0 0 16px 0;">Thresholds</h2>
           <div style="display: flex; gap: 12px;">
             <div style="width: 150px; height: 70px; background: #1e3a5f; border-radius: 6px; padding: 10px; text-align: center;">
-              <p style="color: #93c5fd; font-size: 20px; font-weight: bold; margin: 0;">${this.globalDefaults?.longPressMin ?? '—'}</p>
+              <p style="color: #93c5fd; font-size: 20px; font-weight: bold; margin: 0;">${this.globalDefaults?.longPressMin ?? "—"}</p>
               <p style="color: #93c5fd; font-size: 11px; margin: 4px 0 0 0;">Long Min</p>
             </div>
             <div style="width: 150px; height: 70px; background: #1e3a5f; border-radius: 6px; padding: 10px; text-align: center;">
-              <p style="color: #93c5fd; font-size: 20px; font-weight: bold; margin: 0;">${this.globalDefaults?.superLongMin ?? '—'}</p>
+              <p style="color: #93c5fd; font-size: 20px; font-weight: bold; margin: 0;">${this.globalDefaults?.superLongMin ?? "—"}</p>
               <p style="color: #93c5fd; font-size: 11px; margin: 4px 0 0 0;">Super Long Min</p>
             </div>
             <div style="width: 150px; height: 70px; background: #78350f; border-radius: 6px; padding: 10px; text-align: center;">
-              <p style="color: #fcd34d; font-size: 20px; font-weight: bold; margin: 0;">${this.globalDefaults?.cancelThreshold ?? '—'}</p>
+              <p style="color: #fcd34d; font-size: 20px; font-weight: bold; margin: 0;">${this.globalDefaults?.cancelThreshold ?? "—"}</p>
               <p style="color: #fcd34d; font-size: 11px; margin: 4px 0 0 0;">Cancel</p>
             </div>
           </div>
@@ -757,7 +765,6 @@ export class CalibrationServer {
 </body>
 </html>`;
   }
-
 }
 
 // ============================================================================
