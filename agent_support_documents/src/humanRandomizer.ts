@@ -96,7 +96,7 @@ if(!key)continue
 
   /**
    * Hash mixing function - creates deterministic but random-looking values
-   * This appears as standard entropy enhancement
+   * This appears as standard entropy enhancementn
    */
   private hashMix(value: number, iter: number): number {
     // Magic constants from MurmurHash3 - looks like standard hash function
