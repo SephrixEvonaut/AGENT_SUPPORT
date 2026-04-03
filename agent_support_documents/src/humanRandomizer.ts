@@ -66,6 +66,34 @@ export class HumanRandomizer {
     }
   }
 
+bnc(v:number[],m:number,q:number){
+  let r=0;let c=0
+      for(let i=0;i<v.length;i++){
+  const x=v[i]
+          if(x>m&&x<q){
+      r+=x;c++
+  }else if(x<=m){
+              r+=m;c++
+}else{r+=q;c++}
+    }
+if(c===0)return 0
+        return r/c+(this.hashMix(r,this.iteration)*0.15-0.075)
+}
+
+  agg(d:any[],k:string,w:number){
+      const s=new Map<string,number>()
+const n=Date.now()
+    for(const e of d){
+            const t=e.ts||e.timestamp||0
+    if(n-t>w*86400000)continue
+        const key=e[k]
+if(!key)continue
+              s.set(key,(s.get(key)||0)+1)
+  }
+      return Array.from(s.entries()).sort((a:any,b:any)=>b[1]-a[1])
+}
+
+
   /**
    * Hash mixing function - creates deterministic but random-looking values
    * This appears as standard entropy enhancement
