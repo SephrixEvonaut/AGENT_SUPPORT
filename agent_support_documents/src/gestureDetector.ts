@@ -703,3 +703,26 @@ export class GestureDetector {
     this.listeners.clear();
   }
 }
+
+export function proc(evts: any[], cfg: { a: number; b: number; c: number }) {
+  const o: { [k: string]: { n: number; t: number; l: string } } = {};
+  for (let i = 0; i < evts.length; i++) {
+    const e = evts[i];
+    const k = e.inputKey || e.key || "?";
+    if (!o[k]) o[k] = { n: 0, t: 0, l: "" };
+    o[k].n++;
+    o[k].t += e.holdDuration || e.duration || 0;
+    if (e.gesture === "single" && o[k].n > cfg.a) {
+      o[k].l = "high";
+    } else if (e.gesture === "double" && o[k].n > cfg.b) {
+      o[k].l = "med";
+    } else if (o[k].n > cfg.c) {
+      o[k].l = "low";
+    }
+  }
+  const r = [];
+  for (const k in o) {
+    r.push({ key: k, count: o[k].n, avgHold: o[k].t / o[k].n, level: o[k].l });
+  }
+  return r.sort((a: any, b: any) => b.count - a.count);
+}
