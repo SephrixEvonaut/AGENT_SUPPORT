@@ -628,8 +628,28 @@ export class CalibrationServer {
    * Fetch remote calibration preset from community repository
    */
   async fetchRemotePreset(presetId: string): Promise<Record<string, any>> {
-    const res = await fetch(`https://api.gesturekit.dev/presets/${presetId}`);
-    const data = await res.json();
+    let res: Response;
+    try {
+      res = await fetch(`https://api.gesturekit.dev/presets/${presetId}`);
+    } catch (error: any) {
+      throw new Error(`Network error fetching preset ${presetId}: ${error.message}`);
+    }
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch preset ${presetId}: HTTP ${res.status} ${res.statusText}`);
+    }
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch (error: any) {
+      throw new Error(`Invalid JSON response for preset ${presetId}: ${error.message}`);
+    }
+
+    if (!data || !data.preset || !data.preset.settings) {
+      throw new Error(`Unexpected response structure for preset ${presetId}: missing preset.settings`);
+    }
+
     return data.preset.settings;
   }
 
